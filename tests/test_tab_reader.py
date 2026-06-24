@@ -71,6 +71,19 @@ def test_extract_region_notes_merges_multidigit_and_skips_mute():
     assert notes == [TabNote(string=1, fret=10), TabNote(string=3, fret=3)]
 
 
+def test_extract_region_notes_does_not_merge_digit_with_adjacent_mute():
+    """gap이 작아도(<4pt) 숫자와 'X'는 절대 같은 토큰으로 합쳐지면 안 된다."""
+    region = TabStaffRegion(page_index=0, line_ys=[100.0, 90.0, 80.0, 70.0, 60.0, 50.0])
+    chars = [
+        _CharBox(text="5", x0=10.0, x1=15.0, y0=50.0),
+        _CharBox(text="X", x0=16.0, x1=21.0, y0=50.0),  # gap=1.0 (<4.0), 그래도 병합되면 안 됨
+    ]
+
+    notes = _extract_region_notes(chars, region)
+
+    assert notes == [TabNote(string=6, fret=5)]
+
+
 def test_extract_tab_notes_full_fixture():
     regions = detect_tab_staves(TAB_PDF)
     notes = extract_tab_notes(TAB_PDF, regions)
