@@ -1,4 +1,3 @@
-import io
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
@@ -44,3 +43,26 @@ def test_convert_then_status_then_result(tmp_path, monkeypatch):
 def test_status_missing_job_404(tmp_path, monkeypatch):
     client, _ = make_client(tmp_path, monkeypatch)
     assert client.get("/jobs/nope").status_code == 404
+
+
+def test_result_not_done_returns_409(tmp_path, monkeypatch):
+    # process_job is a no-op so the job stays in "queued" state
+    def noop_process(store, job_id, pdf_path, **kwargs):
+        pass
+
+    client, _ = make_client(tmp_path, monkeypatch)
+    with patch("app.main.process_job", side_effect=noop_process):
+        r = client.post("/convert", files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")})
+        assert r.status_code == 200
+        job_id = r.json()["job_id"]
+
+    res = client.get(f"/jobs/{job_id}/result")
+    assert res.status_code == 409
+
+
+def test_upload_too_large_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("GPC_MAX_UPLOAD_BYTES", "10")
+    client, _ = make_client(tmp_path, monkeypatch)
+    body = b"%PDF-1.4 " + b"x" * 100
+    r = client.post("/convert", files={"file": ("a.pdf", body, "application/pdf")})
+    assert r.status_code == 400

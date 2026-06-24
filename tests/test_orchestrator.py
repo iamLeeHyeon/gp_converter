@@ -2,6 +2,7 @@ import os
 from unittest.mock import patch
 from app.pipeline.orchestrator import run_conversion
 from app.pipeline.audiveris import AudiverisError
+from app.pipeline.tuxguitar import TuxGuitarError
 
 
 def test_happy_path(tmp_path):
@@ -28,4 +29,17 @@ def test_audiveris_failure_propagates(tmp_path):
     with patch("app.pipeline.orchestrator.pdf_to_musicxml", side_effect=AudiverisError("악보 인식 실패")):
         import pytest
         with pytest.raises(AudiverisError):
+            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+
+
+def test_tuxguitar_failure_propagates(tmp_path):
+    import pytest
+    pdf = tmp_path / "in.pdf"
+    pdf.write_bytes(b"%PDF dummy")
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+
+    with patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl"), \
+         patch("app.pipeline.orchestrator.musicxml_to_gp5", side_effect=TuxGuitarError("gp 생성 실패")):
+        with pytest.raises(TuxGuitarError):
             run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)

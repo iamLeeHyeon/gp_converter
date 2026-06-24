@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,9 +14,9 @@ store = JobStore(settings.jobs_dir)
 
 @app.post("/convert")
 async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    if file.content_type != "application/pdf" and not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능")
     data = await file.read()
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능")
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(status_code=400, detail="파일이 너무 큽니다")
 
@@ -52,5 +53,6 @@ async def job_result(job_id: str):
 
 
 # 정적 프론트엔드 (Task 9에서 static/index.html 생성)
-if os.path.isdir("static"):
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+if _STATIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
