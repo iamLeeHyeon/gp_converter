@@ -8,6 +8,12 @@
 
 **Tech Stack:** Python 3.11, FastAPI, uvicorn, pytest. 외부 도구: Audiveris, TuxGuitar (Java/JRE). 배포: Docker.
 
+> **갱신 (2026-06-24, 스파이크 후 피벗):** 출력단을 **TuxGuitar → PyGuitarPro(순수 파이썬)** 로 전환.
+> - 파이프라인: `Audiveris(PDF→MusicXML) → music21(파싱) → PyGuitarPro(.gp5 쓰기)`. Java subprocess는 Audiveris뿐.
+> - **Task 0a/0b 완료:** Audiveris CLI 확정(`-batch -export -output <dir> -- <pdf>`), PyGuitarPro `.gp5` 쓰기 검증. 스파이크: `spikes/`.
+> - **Task 5(TuxGuitar 래퍼)는 폐기**, 대신 **`musicxml_to_gp5`를 PyGuitarPro로 구현**하는 신규 변환기 태스크로 대체(별도 이슈). 시그니처/에러(`musicxml_to_gp5`, "gp 생성 실패")는 유지하므로 오케스트레이터/워커/API는 그대로.
+> - Task 11(Docker): JRE는 Audiveris 번들 런타임 사용, 출력단은 pip 의존성(music21, PyGuitarPro).
+
 ---
 
 ## 파일 구조
