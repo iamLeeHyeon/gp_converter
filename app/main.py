@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
@@ -11,19 +12,37 @@ from app.worker import process_job
 app = FastAPI(title="PDF → Guitar Pro 변환기")
 store = JobStore(settings.jobs_dir)
 
+_UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1MB씩 읽어 전체를 메모리에 버퍼링하지 않는다.
+
 
 @app.post("/convert")
 async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    data = await file.read()
-    if not data.startswith(b"%PDF-"):
-        raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능")
-    if len(data) > settings.max_upload_bytes:
-        raise HTTPException(status_code=400, detail="파일이 너무 큽니다")
+    fd, tmp_path = tempfile.mkstemp(prefix="upload_", suffix=".pdf")
+    checked_magic = False
+    try:
+        with os.fdopen(fd, "wb") as out:
+            total = 0
+            while True:
+                chunk = await file.read(_UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                if not checked_magic:
+                    if not chunk.startswith(b"%PDF-"):
+                        raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능")
+                    checked_magic = True
+                total += len(chunk)
+                if total > settings.max_upload_bytes:
+                    raise HTTPException(status_code=400, detail="파일이 너무 큽니다")
+                out.write(chunk)
+        if not checked_magic:
+            raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능")
+    except Exception:
+        os.remove(tmp_path)
+        raise
 
     job = store.create()
     pdf_path = os.path.join(job.workdir, "input.pdf")
-    with open(pdf_path, "wb") as f:
-        f.write(data)
+    os.replace(tmp_path, pdf_path)
 
     background_tasks.add_task(
         process_job, store, job.id, pdf_path,

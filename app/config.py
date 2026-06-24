@@ -12,7 +12,7 @@ class Settings:
     step_timeout_sec: int = field(default_factory=lambda: int(_env("GPC_STEP_TIMEOUT_SEC", "300")))
     audiveris_cmd: str = field(default_factory=lambda: _env("GPC_AUDIVERIS_CMD", "audiveris"))
     tuxguitar_cmd: str = field(default_factory=lambda: _env("GPC_TUXGUITAR_CMD", "tuxguitar"))
-    jobs_dir: str = field(default_factory=lambda: _env("GPC_JOBS_DIR", "jobs"))
+    jobs_dir: str = field(default_factory=lambda: os.path.abspath(_env("GPC_JOBS_DIR", "jobs")))
 
 
 settings = Settings()

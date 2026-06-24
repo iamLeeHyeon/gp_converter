@@ -12,3 +12,18 @@ def test_env_override(monkeypatch):
     monkeypatch.setenv("GPC_AUDIVERIS_CMD", "/opt/audiveris/bin/audiveris")
     s = Settings()
     assert s.audiveris_cmd == "/opt/audiveris/bin/audiveris"
+
+def test_jobs_dir_default_is_absolute():
+    s = Settings()
+    assert os.path.isabs(s.jobs_dir)
+    assert s.jobs_dir == os.path.join(os.getcwd(), "jobs")
+
+def test_jobs_dir_env_override_relative_is_resolved_absolute(monkeypatch):
+    monkeypatch.setenv("GPC_JOBS_DIR", "custom_jobs")
+    s = Settings()
+    assert s.jobs_dir == os.path.join(os.getcwd(), "custom_jobs")
+
+def test_jobs_dir_env_override_absolute_is_kept(monkeypatch):
+    monkeypatch.setenv("GPC_JOBS_DIR", "/var/data/jobs")
+    s = Settings()
+    assert s.jobs_dir == "/var/data/jobs"

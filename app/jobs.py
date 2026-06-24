@@ -41,8 +41,16 @@ class JobStore:
     def _write(self, job: Job) -> None:
         data = asdict(job)
         data["status"] = job.status.value
-        with open(self._meta_path(job.id), "w") as f:
-            json.dump(data, f)
+        meta_path = self._meta_path(job.id)
+        tmp_path = meta_path + ".tmp"
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump(data, f)
+            os.replace(tmp_path, meta_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
 
     def get(self, job_id: str) -> Optional[Job]:
         path = self._meta_path(job_id)
