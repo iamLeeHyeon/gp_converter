@@ -4,3 +4,4 @@ markers = [
     "integration: 실제 외부 도구(Audiveris/TuxGuitar)를 사용하는 테스트",
 ]
 addopts = "-m 'not integration'"
+pythonpath = ["."]
