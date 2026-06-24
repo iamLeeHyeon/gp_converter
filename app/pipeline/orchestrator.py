@@ -1,6 +1,6 @@
 import os
 from app.pipeline.audiveris import pdf_to_musicxml
-from app.pipeline.tuxguitar import musicxml_to_gp5
+from app.pipeline.musicxml_to_gp import musicxml_to_gp5
 
 
 def run_conversion(pdf_path: str, workdir: str, audiveris_cmd: str, tuxguitar_cmd: str, timeout: int) -> str:
@@ -8,4 +8,4 @@ def run_conversion(pdf_path: str, workdir: str, audiveris_cmd: str, tuxguitar_cm
     xml_dir = os.path.join(workdir, "xml")
     xml_path = pdf_to_musicxml(pdf_path, xml_dir, audiveris_cmd=audiveris_cmd, timeout=timeout)
     gp5_path = os.path.join(workdir, "output.gp5")
-    return musicxml_to_gp5(xml_path, gp5_path, tuxguitar_cmd=tuxguitar_cmd, timeout=timeout)
+    return musicxml_to_gp5(xml_path, gp5_path, timeout=timeout)
