@@ -10,6 +10,10 @@ MusicXML → Guitar Pro 5 변환기 (PyGuitarPro 기반)
   한 마디가 채워지지 않으면 마지막 마디에 나머지 음표를 넣는다.
 - 점음표: quarterLength가 점음표 값(1.5×기본값)이면 isDotted=True로 설정한다.
 - 매핑 불가 박자: 가장 가까운 기본 박자값으로 내림한다(문서화).
+
+주의: Beat.status를 BeatStatus.normal로 명시해야 한다. 기본값(empty)으로 두면
+PyGuitarPro가 GP5 작성 시 같은 마디의 비트들을 하나로 합쳐 음표를 전부
+동시발음 화음으로 뭉개버린다(순차 음표 구조가 깨짐).
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from typing import List, Optional, Tuple
 import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
+from guitarpro.models import BeatStatus
 from music21 import converter, note as m21note, chord as m21chord
 
 
@@ -135,6 +140,7 @@ def _build_song(note_data: List[Tuple[int, float]]) -> guitarpro.Song:
             gp_val, is_dotted = _ql_to_gp_duration(ql)
 
             beat = Beat(voice=voice)
+            beat.status = BeatStatus.normal
             beat.duration.value = gp_val
             beat.duration.isDotted = is_dotted
 
