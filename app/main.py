@@ -1,22 +1,41 @@
 import os
 import tempfile
+from functools import lru_cache
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.config import settings
+from app.config import Settings
 from app.jobs import JobStore, JobStatus
 from app.worker import process_job
 
 app = FastAPI(title="PDF → Guitar Pro 변환기")
-store = JobStore(settings.jobs_dir)
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1MB씩 읽어 전체를 메모리에 버퍼링하지 않는다.
 
 
+@lru_cache
+def get_settings() -> Settings:
+    """프로세스당 한 번 생성되는 기본 Settings.
+
+    테스트에서는 app.dependency_overrides[get_settings]로 교체한다
+    (이 캐시는 override가 적용되면 우회된다).
+    """
+    return Settings()
+
+
+def get_store(settings: Settings = Depends(get_settings)) -> JobStore:
+    return JobStore(settings.jobs_dir)
+
+
 @app.post("/convert")
-async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def convert(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
+    store: JobStore = Depends(get_store),
+):
     fd, tmp_path = tempfile.mkstemp(prefix="upload_", suffix=".pdf")
     checked_magic = False
     try:
@@ -54,7 +73,7 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
 
 
 @app.get("/jobs/{job_id}")
-async def job_status(job_id: str):
+async def job_status(job_id: str, store: JobStore = Depends(get_store)):
     job = store.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job 없음")
@@ -62,7 +81,7 @@ async def job_status(job_id: str):
 
 
 @app.get("/jobs/{job_id}/result")
-async def job_result(job_id: str):
+async def job_result(job_id: str, store: JobStore = Depends(get_store)):
     job = store.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job 없음")
