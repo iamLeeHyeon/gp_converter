@@ -14,7 +14,7 @@ import dataclasses
 from typing import List, Optional
 
 from pdfminer.high_level import extract_pages
-from pdfminer.layout import LTLine, LTPage, LTCurve, LTRect
+from pdfminer.layout import LTChar, LTLine, LTPage, LTCurve, LTRect
 
 _MIN_LINE_WIDTH = 30.0  # 보표선으로 볼 최소 폭(짧은 장식선/빔 제외)
 _GROUP_TOLERANCE_MIN = 1.0  # 등간격 판정 최소 허용오차(pt)
@@ -77,3 +77,92 @@ def detect_tab_staves(pdf_path: str) -> List[TabStaffRegion]:
             line_ys = sorted(group, reverse=True)  # [위, ..., 아래]
             regions.append(TabStaffRegion(page_index=page_index, line_ys=line_ys))
     return regions
+
+
+_DIGIT_MERGE_GAP = 4.0  # 같은 프렛 숫자로 합칠 최대 글자 간격(pt)
+_DIGITS = set("0123456789")
+
+
+@dataclasses.dataclass
+class TabNote:
+    string: int
+    fret: int
+
+
+@dataclasses.dataclass
+class _CharBox:
+    text: str
+    x0: float
+    x1: float
+    y0: float
+
+
+def _nearest_string(y: float, line_ys: List[float]) -> int:
+    """y좌표에 가장 가까운 줄의 현 번호(1~6)를 반환한다."""
+    distances = [abs(y - ly) for ly in line_ys]
+    return distances.index(min(distances)) + 1
+
+
+def _merge_digit_chars(chars: List[_CharBox]) -> List[List[_CharBox]]:
+    """x좌표 순 숫자 글자를 인접한 것끼리 합쳐 토큰으로 만든다.
+
+    'X'는 숫자가 아니므로 합쳐지지 않고 항상 단독 토큰이 된다.
+    """
+    tokens: List[List[_CharBox]] = []
+    for ch in chars:
+        if tokens:
+            prev = tokens[-1][-1]
+            gap = ch.x0 - prev.x1
+            same_line = abs(ch.y0 - prev.y0) < 0.5
+            if (
+                same_line
+                and gap < _DIGIT_MERGE_GAP
+                and prev.text in _DIGITS
+                and ch.text in _DIGITS
+            ):
+                tokens[-1].append(ch)
+                continue
+        tokens.append([ch])
+    return tokens
+
+
+def _extract_region_notes(chars: List[_CharBox], region: TabStaffRegion) -> List[TabNote]:
+    """영역 안 글자 목록(정렬 불필요)에서 좌→우 (현,프렛) 순서열을 만든다.
+
+    'X'(뮤트)는 결과에서 제외한다.
+    """
+    ordered = sorted(chars, key=lambda c: c.x0)
+    notes: List[TabNote] = []
+    for token in _merge_digit_chars(ordered):
+        text = "".join(c.text for c in token)
+        if text == "X":
+            continue
+        string = _nearest_string(token[0].y0, region.line_ys)
+        notes.append(TabNote(string=string, fret=int(text)))
+    return notes
+
+
+def extract_tab_notes(pdf_path: str, regions: List[TabStaffRegion]) -> List[TabNote]:
+    """탭보표 영역에서 (현, 프렛) 순서열을 보표 순서대로 추출한다."""
+    notes: List[TabNote] = []
+    pages = list(extract_pages(pdf_path))
+    for region in regions:
+        page = pages[region.page_index]
+        margin = (region.line_ys[0] - region.line_ys[-1]) * _GROUP_TOLERANCE_RATIO
+        y_min = region.line_ys[-1] - margin
+        y_max = region.line_ys[0] + margin
+
+        chars: List[_CharBox] = []
+
+        def walk(obj):
+            if isinstance(obj, LTChar):
+                text = obj.get_text()
+                if y_min <= obj.y0 <= y_max and (text in _DIGITS or text == "X"):
+                    chars.append(_CharBox(text=text, x0=obj.x0, x1=obj.x1, y0=obj.y0))
+            for child in getattr(obj, "_objs", []):
+                walk(child)
+
+        walk(page)
+        notes.extend(_extract_region_notes(chars, region))
+
+    return notes
