@@ -54,6 +54,38 @@ def test_roundtrip_preserves_pitches(tmp_path):
     )
 
 
+def test_roundtrip_preserves_beat_structure(tmp_path):
+    """각 음표는 별개의 순차 비트여야 한다 (동시발음 화음으로 합쳐지면 안 됨).
+
+    버그 재현: Beat.status를 설정하지 않으면(기본값 BeatStatus.empty) GP5 writer가
+    같은 마디의 모든 빈 status 비트를 하나로 합치고 그 안의 음표를 전부
+    동시발음 화음으로 몰아넣는다. fixture는 단음(monophonic) 음계이므로
+    비트마다 음표가 정확히 1개씩, 총 8개 비트여야 한다.
+    """
+    out = str(tmp_path / "roundtrip_structure.gp5")
+    musicxml_to_gp5(FIXTURE, out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+
+    beats_with_notes = [
+        beat
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        if beat.notes
+    ]
+
+    assert len(beats_with_notes) == len(EXPECTED_MIDI), (
+        f"비트 개수 불일치(화음으로 합쳐졌을 가능성): "
+        f"예상 {len(EXPECTED_MIDI)}개 비트, 실제 {len(beats_with_notes)}개"
+    )
+    for beat in beats_with_notes:
+        assert len(beat.notes) == 1, (
+            f"비트당 음표가 1개여야 하는데 {len(beat.notes)}개 (동시발음 화음으로 합쳐짐)"
+        )
+
+
 def test_empty_musicxml_raises(tmp_path):
     """음표 없는 MusicXML에서 GpConvertError('변환할 음표 없음')를 발생시켜야 한다."""
     empty_xml = tmp_path / "empty.musicxml"
