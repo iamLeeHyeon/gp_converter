@@ -66,3 +66,43 @@ def test_upload_too_large_rejected(tmp_path, monkeypatch):
     body = b"%PDF-1.4 " + b"x" * 100
     r = client.post("/convert", files={"file": ("a.pdf", body, "application/pdf")})
     assert r.status_code == 400
+
+
+def _jobs_dir_entries(tmp_path):
+    jobs_dir = tmp_path / "jobs"
+    if not jobs_dir.exists():
+        return []
+    return list(jobs_dir.iterdir())
+
+
+def test_rejected_upload_leaves_no_temp_or_job_files(tmp_path, monkeypatch):
+    """비-PDF/용량초과로 거부된 업로드는 임시파일이나 job 디렉토리를 남기면 안 된다."""
+    monkeypatch.setenv("GPC_MAX_UPLOAD_BYTES", "10")
+    client, _ = make_client(tmp_path, monkeypatch)
+
+    r1 = client.post("/convert", files={"file": ("a.txt", b"hello", "text/plain")})
+    assert r1.status_code == 400
+
+    body = b"%PDF-1.4 " + b"x" * 100
+    r2 = client.post("/convert", files={"file": ("a.pdf", body, "application/pdf")})
+    assert r2.status_code == 400
+
+    assert _jobs_dir_entries(tmp_path) == []
+
+    import glob
+    leftover_tmp = glob.glob("/tmp/upload_*")
+    assert leftover_tmp == []
+
+
+def test_accepted_upload_content_fully_written(tmp_path, monkeypatch):
+    """스트리밍으로 받은 PDF가 잘리지 않고 job workdir에 그대로 저장돼야 한다."""
+    client, main = make_client(tmp_path, monkeypatch)
+    body = b"%PDF-1.4 " + b"x" * (2 * 1024 * 1024)  # 청크 경계를 넘는 크기
+
+    def noop_process(store, job_id, pdf_path, **kwargs):
+        with open(pdf_path, "rb") as f:
+            assert f.read() == body
+
+    with patch("app.main.process_job", side_effect=noop_process):
+        r = client.post("/convert", files={"file": ("a.pdf", body, "application/pdf")})
+        assert r.status_code == 200
