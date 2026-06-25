@@ -81,12 +81,13 @@ _FIFTHS_TO_KEYSIG = {
 
 @dataclass
 class NoteEvent:
-    """한 음표(또는 화음 최고음)의 (음높이, 길이, 이음줄 연속 여부).
+    """한 음표(또는 화음)의 (음높이 목록, 길이, 이음줄 연속 여부).
 
-    쉼표면 is_rest=True이고 midi는 None이다.
+    pitches는 MIDI 내림차순(높은음 먼저) 리스트다. 단일음은 길이 1,
+    화음은 길이 2 이상, 쉼표(is_rest=True)는 빈 리스트다.
     """
 
-    midi: Optional[int]
+    pitches: List[int]
     ql: float
     tied: bool = False  # True면 직전 음에서 이어지는 연속음(NoteType.tie)
     is_rest: bool = False
@@ -146,7 +147,7 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     for n in stream_like.notesAndRests:
         ql = float(n.duration.quarterLength)
         if isinstance(n, m21note.Rest):
-            events.append(NoteEvent(midi=None, ql=ql, is_rest=True))
+            events.append(NoteEvent(pitches=[], ql=ql, is_rest=True))
             continue
         tied = n.tie is not None and n.tie.type in ("continue", "stop")
         if isinstance(n, m21chord.Chord):
@@ -154,7 +155,7 @@ def _extract_events(stream_like) -> List[NoteEvent]:
         else:
             midi = n.pitch.midi
         midi += _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
-        events.append(NoteEvent(midi, ql, tied))
+        events.append(NoteEvent(pitches=[midi], ql=ql, tied=tied))
     return events
 
 
@@ -277,10 +278,10 @@ def _build_song(
             if hint is not None:
                 snum, fret = hint
             else:
-                sf = _midi_to_string_fret(ev.midi, strings)
+                sf = _midi_to_string_fret(ev.pitches[0], strings)
                 if sf is None:
                     # 범위 밖 음표는 건너뜀
-                    logger.warning("MIDI %d는 어떤 현으로도 표현할 수 없어 건너뜀", ev.midi)
+                    logger.warning("MIDI %d는 어떤 현으로도 표현할 수 없어 건너뜀", ev.pitches[0])
                     continue
                 snum, fret = sf
 

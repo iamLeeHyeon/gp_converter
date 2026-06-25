@@ -191,7 +191,7 @@ def test_out_of_range_note_is_logged_and_skipped(caplog):
             numerator=4,
             denominator=4,
             key_fifths=0,
-            voices=[[NoteEvent(midi=30, ql=1.0, tied=False), NoteEvent(midi=60, ql=1.0, tied=False)]],
+            voices=[[NoteEvent(pitches=[30], ql=1.0, tied=False), NoteEvent(pitches=[60], ql=1.0, tied=False)]],
         )
     ]
 
