@@ -149,3 +149,41 @@ def test_tab_hints_ignored_when_count_mismatches(tmp_path):
     # 휴리스틱(최저프렛) 결과와 같아야 하고, 가짜 힌트와는 달라야 한다.
     assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
     assert actual != FAKE_TAB_HINTS[:5] + actual[5:]
+
+
+def test_tab_hints_ignored_when_fret_out_of_range(tmp_path):
+    """힌트의 프렛이 0~24 범위를 벗어나면 전체를 무시하고 휴리스틱으로 폴백해야 한다."""
+    out = str(tmp_path / "tab_invalid_fret.gp5")
+    invalid_hints = [(3, 5), (3, 7), (3, 9), (3, 10), (3, 12), (3, 14), (3, 99), (3, 17)]
+    musicxml_to_gp5(FIXTURE, out, tab_hints=invalid_hints)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    actual = [
+        (note.string, note.value)
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
+
+
+def test_tab_hints_ignored_when_string_number_invalid(tmp_path):
+    """힌트의 현 번호가 트랙에 존재하지 않으면 전체를 무시하고 휴리스틱으로 폴백해야 한다."""
+    out = str(tmp_path / "tab_invalid_string.gp5")
+    invalid_hints = [(7, 5), (3, 7), (3, 9), (3, 10), (3, 12), (3, 14), (3, 16), (3, 17)]
+    musicxml_to_gp5(FIXTURE, out, tab_hints=invalid_hints)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    actual = [
+        (note.string, note.value)
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]

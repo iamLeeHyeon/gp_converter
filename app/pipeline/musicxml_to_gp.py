@@ -113,6 +113,14 @@ def _build_song(
     track = song.tracks[0]
     strings = [(s.number, s.value) for s in track.strings]
 
+    if tab_hints is not None:
+        valid_string_numbers = {snum for snum, _ in strings}
+        if any(
+            not (0 <= fret <= 24) or string not in valid_string_numbers
+            for string, fret in tab_hints
+        ):
+            tab_hints = None
+
     hints = tab_hints if tab_hints is not None else [None] * len(note_data)
     items = list(zip(note_data, hints))
 
