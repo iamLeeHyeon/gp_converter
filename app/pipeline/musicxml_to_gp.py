@@ -48,6 +48,11 @@ _STANDARD_STRINGS: List[Tuple[int, int]] = [
 _QL_TO_GPV = {4.0: 1, 2.0: 2, 1.0: 4, 0.5: 8, 0.25: 16, 0.125: 32}
 _DOTTED_QL_TO_GPV = {3.0: 1, 1.5: 2, 0.75: 4, 0.375: 8, 0.1875: 16}
 
+# 클래식/핑거스타일 기타 표준악보(탭 아님) 표기 관행: 작은 "8" 표기 유무와
+# 무관하게 적힌 음보다 항상 1옥타브 낮게 소리난다. Audiveris는 그려진 대로
+# 정확히 읽으므로, 실제 소리나는 음을 얻으려면 적힌 MIDI에서 12를 빼야 한다.
+_GUITAR_WRITTEN_TO_SOUNDING_OFFSET = -12
+
 # MusicXML fifths(장조 기준) → PyGuitarPro KeySignature. -8~8 범위 밖은 클램프.
 _FIFTHS_TO_KEYSIG = {
     -8: gpm.KeySignature.FMajorFlat,
@@ -147,10 +152,13 @@ def _collect_notes(score) -> List[MeasureData]:
         for n in m.recurse().notes:
             tied = n.tie is not None and n.tie.type in ("continue", "stop")
             if isinstance(n, m21note.Note):
-                events.append(NoteEvent(n.pitch.midi, float(n.duration.quarterLength), tied))
+                midi = n.pitch.midi
             elif isinstance(n, m21chord.Chord):
                 midi = max(p.midi for p in n.pitches)
-                events.append(NoteEvent(midi, float(n.duration.quarterLength), tied))
+            else:
+                continue
+            midi += _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
+            events.append(NoteEvent(midi, float(n.duration.quarterLength), tied))
 
         result.append(MeasureData(numerator, denominator, key_fifths, events))
 

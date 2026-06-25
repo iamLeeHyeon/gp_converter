@@ -2,7 +2,9 @@
 tests/test_musicxml_to_gp.py
 
 musicxml_to_gp5 변환기 테스트.
-fixture: tests/fixtures/sample.musicxml (C장조 음계: C4~C5, 8분음표 8개)
+fixture: tests/fixtures/sample.musicxml (C장조 음계: C4~C5, 8분음표 8개로 "적힌" 악보.
+실제 클래식/핑거스타일 기타 표준악보 관행상 적힌 음보다 1옥타브 낮게 소리난다 —
+그래서 변환 결과의 실제(sounding) MIDI는 적힌 값에서 12를 뺀 것이어야 한다.)
 """
 
 import os
@@ -20,7 +22,10 @@ from app.pipeline.musicxml_to_gp import (
 )
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample.musicxml")
-EXPECTED_MIDI = [60, 62, 64, 65, 67, 69, 71, 72]  # C4 D4 E4 F4 G4 A4 B4 C5
+# fixture에 "적힌" 음(WRITTEN_MIDI)과, 기타 표기 관행(1옥타브 낮게 소리남) 적용 후
+# 실제(sounding) MIDI. GP5에는 실제 소리나는 음이 들어가야 한다.
+WRITTEN_MIDI = [60, 62, 64, 65, 67, 69, 71, 72]  # C4 D4 E4 F4 G4 A4 B4 C5 (적힌 음)
+EXPECTED_MIDI = [m - 12 for m in WRITTEN_MIDI]  # C3 D3 E3 F3 G3 A3 B3 C4 (실제 소리)
 
 
 def test_converts_fixture_to_valid_gp5(tmp_path):
@@ -112,9 +117,9 @@ def test_empty_musicxml_raises(tmp_path):
         musicxml_to_gp5(str(empty_xml), out)
 
 
-# sample.musicxml(EXPECTED_MIDI = [60,62,64,65,67,69,71,72])에서
+# sample.musicxml(실제 소리나는 EXPECTED_MIDI = [48,50,52,53,55,57,59,60])에서
 # 기존 휴리스틱(최저프렛)이 실제로 고르는 (현,프렛)을 사람이 검증한 값:
-#   60→(2,1) 62→(2,3) 64→(1,0) 65→(1,1) 67→(1,3) 69→(1,5) 71→(1,7) 72→(1,8)
+#   48→(5,3) 50→(4,0) 52→(4,2) 53→(4,3) 55→(3,0) 57→(3,2) 59→(2,0) 60→(2,1)
 # 탭 힌트 테스트에서는 이와 "다른" 가짜 값(전부 3번줄)을 줘서
 # 힌트가 실제로 휴리스틱을 덮어쓰는지 증명한다.
 FAKE_TAB_HINTS = [(3, 5), (3, 7), (3, 9), (3, 10), (3, 12), (3, 14), (3, 16), (3, 17)]
@@ -155,7 +160,7 @@ def test_tab_hints_ignored_when_count_mismatches(tmp_path):
     ]
 
     # 휴리스틱(최저프렛) 결과와 같아야 하고, 가짜 힌트와는 달라야 한다.
-    assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
+    assert actual == [(5, 3), (4, 0), (4, 2), (4, 3), (3, 0), (3, 2), (2, 0), (2, 1)]
     assert actual != FAKE_TAB_HINTS[:5] + actual[5:]
 
 
@@ -175,7 +180,7 @@ def test_tab_hints_ignored_when_fret_out_of_range(tmp_path):
         for note in beat.notes
     ]
 
-    assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
+    assert actual == [(5, 3), (4, 0), (4, 2), (4, 3), (3, 0), (3, 2), (2, 0), (2, 1)]
 
 
 def test_out_of_range_note_is_logged_and_skipped(caplog):
@@ -223,7 +228,7 @@ def test_tab_hints_ignored_when_string_number_invalid(tmp_path):
         for note in beat.notes
     ]
 
-    assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
+    assert actual == [(5, 3), (4, 0), (4, 2), (4, 3), (3, 0), (3, 2), (2, 0), (2, 1)]
 
 
 def test_parse_failure_has_specific_message(tmp_path):
@@ -299,7 +304,9 @@ def test_measure_grouping_follows_real_measure_boundaries(tmp_path):
         [string_val[note.string] + note.value for voice in measure.voices for beat in voice.beats for note in beat.notes]
         for measure in track.measures
     ]
-    assert per_measure_midi == [[60, 62, 64], [65, 67, 69]], (
+    # 기타 표기 관행(1옥타브 낮게 소리남)으로 적힌 C4D4E4/F4G4A4(60,62,64/65,67,69)는
+    # 실제로 C3D3E3/F3G3A3(48,50,52/53,55,57)로 소리난다.
+    assert per_measure_midi == [[48, 50, 52], [53, 55, 57]], (
         f"마디 경계가 밀림: {per_measure_midi}"
     )
 
@@ -392,3 +399,47 @@ def test_tied_note_marked_as_tie_type_not_normal(tmp_path):
     assert len(notes) == 2
     assert notes[0].type == guitarpro.NoteType.normal, "이음줄 시작 음은 새 발음이어야 함"
     assert notes[1].type == guitarpro.NoteType.tie, "이음줄로 이어지는 음은 tie 타입이어야 함"
+
+
+_WRITTEN_C5_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_standard_notation_pitch_shifted_down_one_octave(tmp_path):
+    """클래식/핑거스타일 기타 표준악보는 적힌 음보다 1옥타브 낮게 소리난다.
+
+    적힌 C5(MIDI 72)는 실제로는 C4(MIDI 60)로 소리나야 한다. 탭보표가 아닌
+    표준 5선 악보를 OMR로 읽은 경우에만 적용되는 관행이며, 탭 힌트가 있을
+    때는 이미 정확한 (현,프렛)이라 이 보정과 무관하다.
+    """
+    xml_path = tmp_path / "written_c5.musicxml"
+    xml_path.write_text(_WRITTEN_C5_XML, encoding="utf-8")
+    out = str(tmp_path / "written_c5.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    string_val = {s.number: s.value for s in track.strings}
+    actual_midi = [
+        string_val[note.string] + note.value
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    assert actual_midi == [60], f"적힌 C5(72)가 1옥타브 낮은 C4(60)로 소리나야 하는데: {actual_midi}"
