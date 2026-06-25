@@ -325,6 +325,10 @@ def _build_song(
                     gnote.string = snum
                     gnote.type = NoteType.tie if ev.tied else NoteType.normal
                     gnotes.append(gnote)
+                if not gnotes:
+                    # 화음 전체 음이 범위 밖이라 하나도 못 배정되면, 빈
+                    # normal 비트(의미상 잘못된 상태) 대신 rest로 처리한다.
+                    beat.status = BeatStatus.rest
                 beat.notes = gnotes
                 beats.append(beat)
                 continue

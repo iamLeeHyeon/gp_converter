@@ -793,3 +793,56 @@ def test_tab_hints_apply_only_to_single_note_events_when_chord_present(tmp_path)
     assert len(chord_beat.notes) == 2  # 화음은 힌트 무시, 2음 다 살아있음
     assert (single1.notes[0].string, single1.notes[0].value) == (6, 20)
     assert (single2.notes[0].string, single2.notes[0].value) == (6, 21)
+
+
+_ALL_UNPLACEABLE_CHORD_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>9</octave></pitch>
+        <duration>4</duration><type>whole</type>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>E</step><octave>9</octave></pitch>
+        <duration>4</duration><type>whole</type>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>G</step><octave>9</octave></pitch>
+        <duration>4</duration><type>whole</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_chord_all_notes_unplaceable_becomes_rest_beat(tmp_path):
+    """화음의 모든 음이 범위 밖이면 빈 normal 비트가 아니라 rest 비트가 돼야 한다.
+
+    적힌 C9,E9,G9(120,124,127) -1옥타브 = 108,112,115 — 표준 튜닝 6현 중
+    어디에도 0~24 프렛으로 못 들어간다(1번줄 최대 MIDI 64+24=88). 모든 음이
+    None으로 배정되면 beat.notes는 비어야 하지만, status는 normal이 아니라
+    rest여야 한다(빈 normal 비트는 의미상 잘못된 상태).
+    """
+    xml_path = tmp_path / "unplaceable_chord.musicxml"
+    xml_path.write_text(_ALL_UNPLACEABLE_CHORD_XML, encoding="utf-8")
+    out = str(tmp_path / "unplaceable_chord.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    beats = [beat for voice in track.measures[0].voices for beat in voice.beats]
+
+    assert len(beats) == 1, f"화음은 비트 1개여야 하는데 {len(beats)}개"
+    assert beats[0].status == guitarpro.BeatStatus.rest
+    assert len(beats[0].notes) == 0
