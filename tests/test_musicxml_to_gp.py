@@ -658,7 +658,7 @@ def test_assign_chord_strings_no_conflict():
 def test_assign_chord_strings_falls_back_when_first_choice_taken():
     """1순위 현이 이미 다른 음에 쓰였으면 그 다음 후보 현으로 넘어가야 한다.
 
-    MIDI 65(E5)와 64(E4 옥타브 위... 실제로는 두 음 다 string1을 1순위로
+    MIDI 65(F4)와 64(E4 옥타브 위... 실제로는 두 음 다 string1을 1순위로
     원하는 상황): 65는 string1 fret1을, 64는 string1 fret0을 1순위로
     원한다. 65가 먼저(내림차순) string1을 차지하면 64는 string2 fret5로
     밀려나야 한다.
