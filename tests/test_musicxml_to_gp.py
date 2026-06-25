@@ -678,3 +678,64 @@ def test_assign_chord_strings_skips_unplaceable_note_only():
     result = _assign_chord_strings([100, 64], _STANDARD_STRINGS)
 
     assert result == [None, (1, 0)]
+
+
+_CHORD_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>E</step><octave>5</octave></pitch>
+        <duration>4</duration><type>whole</type>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>4</duration><type>whole</type>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>A</step><octave>4</octave></pitch>
+        <duration>4</duration><type>whole</type>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>F</step><octave>4</octave></pitch>
+        <duration>4</duration><type>whole</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_chord_all_notes_placed_on_distinct_strings(tmp_path):
+    """화음의 모든 음이 한 비트 안에, 서로 다른 현에 살아있어야 한다(최고음만 X)."""
+    xml_path = tmp_path / "chord.musicxml"
+    xml_path.write_text(_CHORD_XML, encoding="utf-8")
+    out = str(tmp_path / "chord.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    string_val = {s.number: s.value for s in track.strings}
+
+    beats = [beat for voice in track.measures[0].voices for beat in voice.beats]
+    assert len(beats) == 1, f"화음은 비트 1개여야 하는데 {len(beats)}개"
+
+    notes = beats[0].notes
+    assert len(notes) == 4, f"화음 음 4개가 다 살아있어야 하는데 {len(notes)}개"
+
+    strings_used = [n.string for n in notes]
+    assert len(strings_used) == len(set(strings_used)), "같은 현을 두 음이 동시에 씀"
+
+    # 적힌 E5,C5,A4,F4(76,72,69,65) -1옥타브 = 64,60,57,53
+    actual_midi = sorted(string_val[n.string] + n.value for n in notes)
+    assert actual_midi == [53, 57, 60, 64]

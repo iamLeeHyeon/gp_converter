@@ -178,11 +178,11 @@ def _extract_events(stream_like) -> List[NoteEvent]:
             continue
         tied = n.tie is not None and n.tie.type in ("continue", "stop")
         if isinstance(n, m21chord.Chord):
-            midi = max(p.midi for p in n.pitches)
+            midis = sorted((p.midi for p in n.pitches), reverse=True)
         else:
-            midi = n.pitch.midi
-        midi += _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
-        events.append(NoteEvent(pitches=[midi], ql=ql, tied=tied))
+            midis = [n.pitch.midi]
+        pitches = [m + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET for m in midis]
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied))
     return events
 
 
@@ -298,6 +298,30 @@ def _build_song(
                 beat.duration.value = gp_val
                 beat.duration.isDotted = is_dotted
                 beat.notes = []
+                beats.append(beat)
+                continue
+
+            if len(ev.pitches) >= 2:
+                # 화음: tab_hints는 무시(힌트 1개로 다중음 표현 불가)하고
+                # 항상 _assign_chord_strings로 배정한다.
+                placements = _assign_chord_strings(ev.pitches, strings)
+                beat = Beat(voice=voice)
+                beat.status = BeatStatus.normal
+                beat.duration.value = gp_val
+                beat.duration.isDotted = is_dotted
+
+                gnotes = []
+                for placement in placements:
+                    if placement is None:
+                        logger.warning("화음 음 일부가 어떤 현으로도 표현할 수 없어 건너뜀")
+                        continue
+                    snum, fret = placement
+                    gnote = Note(beat=beat)
+                    gnote.value = fret
+                    gnote.string = snum
+                    gnote.type = NoteType.tie if ev.tied else NoteType.normal
+                    gnotes.append(gnote)
+                beat.notes = gnotes
                 beats.append(beat)
                 continue
 
