@@ -97,46 +97,59 @@ def _collect_notes(score) -> List[Tuple[int, float]]:
     return result
 
 
-def _build_song(note_data: List[Tuple[int, float]]) -> guitarpro.Song:
-    """(MIDI, quarterLength) 목록으로 GP Song 객체를 생성한다."""
+def _build_song(
+    note_data: List[Tuple[int, float]],
+    tab_hints: Optional[List[Tuple[int, int]]] = None,
+) -> guitarpro.Song:
+    """(MIDI, quarterLength) 목록으로 GP Song 객체를 생성한다.
+
+    tab_hints가 note_data와 길이가 같으면 각 음표에 명시적 (현,프렛)을 쓴다.
+    길이가 다르면 tab_hints를 무시하고 기존 휴리스틱(최저프렛)을 쓴다.
+    """
+    if tab_hints is not None and len(tab_hints) != len(note_data):
+        tab_hints = None
+
     song = gpm.Song()
     track = song.tracks[0]
     strings = [(s.number, s.value) for s in track.strings]
 
-    # 음표를 4/4 마디 단위로 그룹화
-    measures_notes: List[List[Tuple[int, float]]] = []
-    current_bar: List[Tuple[int, float]] = []
+    hints = tab_hints if tab_hints is not None else [None] * len(note_data)
+    items = list(zip(note_data, hints))
+
+    # (음표,힌트) 쌍을 4/4 마디 단위로 그룹화
+    measures_items: List[List[Tuple[Tuple[int, float], Optional[Tuple[int, int]]]]] = []
+    current_bar: List[Tuple[Tuple[int, float], Optional[Tuple[int, int]]]] = []
     current_ql = 0.0
 
-    for midi, ql in note_data:
-        current_bar.append((midi, ql))
+    for (midi, ql), hint in items:
+        current_bar.append(((midi, ql), hint))
         current_ql += ql
-        # 마디가 가득 찼거나 초과하면 새 마디 시작
         if current_ql >= _BAR_QL:
-            measures_notes.append(current_bar)
+            measures_items.append(current_bar)
             current_bar = []
             current_ql = 0.0
 
-    # 마지막 불완전 마디
     if current_bar:
-        measures_notes.append(current_bar)
+        measures_items.append(current_bar)
 
-    if not measures_notes:
+    if not measures_items:
         return song
 
-    # 첫 번째 기존 MeasureHeader/Measure 재사용
     first_mh = song.measureHeaders[0]
     first_measure = track.measures[0]
 
-    def _fill_measure(measure: gpm.Measure, bar_notes: List[Tuple[int, float]]) -> None:
+    def _fill_measure(measure: gpm.Measure, bar_items) -> None:
         voice = measure.voices[0]
         beats: List[Beat] = []
-        for midi, ql in bar_notes:
-            sf = _midi_to_string_fret(midi, strings)
-            if sf is None:
-                # 범위 밖 음표는 건너뜀
-                continue
-            snum, fret = sf
+        for (midi, ql), hint in bar_items:
+            if hint is not None:
+                snum, fret = hint
+            else:
+                sf = _midi_to_string_fret(midi, strings)
+                if sf is None:
+                    # 범위 밖 음표는 건너뜀
+                    continue
+                snum, fret = sf
             gp_val, is_dotted = _ql_to_gp_duration(ql)
 
             beat = Beat(voice=voice)
@@ -152,18 +165,17 @@ def _build_song(note_data: List[Tuple[int, float]]) -> guitarpro.Song:
             beats.append(beat)
         voice.beats = beats
 
-    _fill_measure(first_measure, measures_notes[0])
+    _fill_measure(first_measure, measures_items[0])
 
-    # 추가 마디 생성
     start = first_mh.start + first_mh.length
-    for i, bar_notes in enumerate(measures_notes[1:], start=2):
+    for i, bar_items in enumerate(measures_items[1:], start=2):
         mh = gpm.MeasureHeader()
         mh.number = i
         mh.start = start
         song.measureHeaders.append(mh)
 
         m = gpm.Measure(track, mh)
-        _fill_measure(m, bar_notes)
+        _fill_measure(m, bar_items)
         track.measures.append(m)
 
         start += mh.length
@@ -171,7 +183,12 @@ def _build_song(note_data: List[Tuple[int, float]]) -> guitarpro.Song:
     return song
 
 
-def musicxml_to_gp5(xml_path: str, gp5_path: str, timeout: int = 0) -> str:
+def musicxml_to_gp5(
+    xml_path: str,
+    gp5_path: str,
+    timeout: int = 0,
+    tab_hints: Optional[List[Tuple[int, int]]] = None,
+) -> str:
     """MusicXML을 .gp5로 변환하고 출력 경로를 반환한다.
 
     Parameters
@@ -182,6 +199,9 @@ def musicxml_to_gp5(xml_path: str, gp5_path: str, timeout: int = 0) -> str:
         출력 .gp5 파일 경로.
     timeout:
         오케스트레이터 호환용 파라미터. 순수 Python 구현이므로 사용하지 않는다.
+    tab_hints:
+        탭보표에서 읽은 (현 번호, 프렛) 목록. 음표 개수와 정확히 일치할 때만
+        휴리스틱(최저프렛) 대신 그대로 쓴다. None이거나 개수가 다르면 무시한다.
 
     Returns
     -------
@@ -207,7 +227,7 @@ def musicxml_to_gp5(xml_path: str, gp5_path: str, timeout: int = 0) -> str:
         raise GpConvertError("변환할 음표 없음")
 
     try:
-        song = _build_song(note_data)
+        song = _build_song(note_data, tab_hints=tab_hints)
         guitarpro.write(song, gp5_path)
     except Exception as e:
         raise GpConvertError("gp 생성 실패") from e

@@ -102,3 +102,50 @@ def test_empty_musicxml_raises(tmp_path):
 
     with pytest.raises(GpConvertError, match="변환할 음표 없음"):
         musicxml_to_gp5(str(empty_xml), out)
+
+
+# sample.musicxml(EXPECTED_MIDI = [60,62,64,65,67,69,71,72])에서
+# 기존 휴리스틱(최저프렛)이 실제로 고르는 (현,프렛)을 사람이 검증한 값:
+#   60→(2,1) 62→(2,3) 64→(1,0) 65→(1,1) 67→(1,3) 69→(1,5) 71→(1,7) 72→(1,8)
+# 탭 힌트 테스트에서는 이와 "다른" 가짜 값(전부 3번줄)을 줘서
+# 힌트가 실제로 휴리스틱을 덮어쓰는지 증명한다.
+FAKE_TAB_HINTS = [(3, 5), (3, 7), (3, 9), (3, 10), (3, 12), (3, 14), (3, 16), (3, 17)]
+
+
+def test_tab_hints_override_heuristic_when_count_matches(tmp_path):
+    """tab_hints 개수가 음표 개수와 일치하면 휴리스틱 대신 힌트를 그대로 써야 한다."""
+    out = str(tmp_path / "tab_hint.gp5")
+    musicxml_to_gp5(FIXTURE, out, tab_hints=FAKE_TAB_HINTS)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    actual = [
+        (note.string, note.value)
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    assert actual == FAKE_TAB_HINTS
+
+
+def test_tab_hints_ignored_when_count_mismatches(tmp_path):
+    """tab_hints 개수가 음표 개수와 다르면 힌트를 무시하고 기존 휴리스틱을 써야 한다."""
+    out = str(tmp_path / "tab_mismatch.gp5")
+    mismatched_hints = FAKE_TAB_HINTS[:5]  # 8개 음표인데 5개만 줌
+    musicxml_to_gp5(FIXTURE, out, tab_hints=mismatched_hints)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    actual = [
+        (note.string, note.value)
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    # 휴리스틱(최저프렛) 결과와 같아야 하고, 가짜 힌트와는 달라야 한다.
+    assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
+    assert actual != FAKE_TAB_HINTS[:5] + actual[5:]
