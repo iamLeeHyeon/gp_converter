@@ -17,6 +17,9 @@ env/
 # superpowers scratch (subagent-driven-development progress ledger)
 .superpowers/
 
+# 세션 핸드오프 문서 (커밋 대상 아님, 로컬 인수인계용)
+handoff/
+
 # Working dirs / outputs
 /tmp/
 jobs/
