@@ -97,3 +97,20 @@ def test_tab_reader_exception_falls_back_to_none(tmp_path):
     assert result == str(workdir / "out.gp5")
     _, kwargs = gp.call_args
     assert kwargs["tab_hints"] is None
+
+
+def test_tab_reader_exception_is_logged(tmp_path, caplog):
+    """탭 인식 실패 시 조용히 넘어가지 않고 사유가 로그로 남아야 한다."""
+    pdf = tmp_path / "in.pdf"
+    pdf.write_bytes(b"%PDF dummy")
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+
+    with patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl"), \
+         patch("app.pipeline.orchestrator.detect_tab_staves", side_effect=RuntimeError("pdfminer 파싱 실패")), \
+         patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")):
+        with caplog.at_level("WARNING", logger="app.pipeline.orchestrator"):
+            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+
+    assert len(caplog.records) == 1
+    assert "pdfminer 파싱 실패" in caplog.records[0].message
