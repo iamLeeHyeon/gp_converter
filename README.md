@@ -9,6 +9,7 @@ PDF 업로드 → Audiveris(OMR, PDF→MusicXML) → music21(파싱) → PyGuita
 ```
 
 - **입력:** 디지털 표준악보 PDF(MuseScore/Finale 등에서 출력한 오선보). 스캔 이미지나 기타 탭 전용 PDF는 아직 지원하지 않음.
+- **탭(TAB) 인식:** 표준악보(5선보)와 탭보표(6선보)가 같은 시스템에 함께 있는 디지털 PDF라면, 탭에 적힌 정확한 현/프렛을 읽어 사용한다(휴리스틱 추정보다 정확). 탭보표가 없거나 숫자 추출 결과가 표준악보 음표 개수와 다르면 자동으로 기존 휴리스틱(최저프렛)으로 폴백한다.
 - **출력:** Guitar Pro 5(`.gp5`) 파일.
 - **변환 방식:** Audiveris(Java, 광학 악보 인식)로 PDF를 MusicXML로 바꾼 뒤, 순수 Python(`music21` + `PyGuitarPro`)으로 `.gp5`를 직접 작성한다. Java 서브프로세스는 Audiveris 하나뿐.
 
@@ -106,5 +107,5 @@ docs/superpowers/        # 설계 문서 및 구현 계획
 
 ## 알려진 한계
 
-- 기타 탭(TAB) 전용 PDF는 인식 정확도가 떨어진다(Audiveris는 표준 오선보 인식기). 별도 인식 경로는 추후 과제.
+- 탭 인식은 디지털 PDF 한정이며, 표준악보 없이 탭보표만 있는 PDF, 스캔 이미지 탭, 화음(동시발음) 탭, 해머링/슬라이드 등 기법 기호는 지원하지 않는다(`X` 뮤트 표시는 스킵됨). 자세한 한계는 `docs/superpowers/specs/2026-06-24-guitar-tab-recognition-design.md` 참고.
 - Audiveris OMR은 PDF 페이지 수에 비례해 느리다(예: 6페이지 ~7분).
