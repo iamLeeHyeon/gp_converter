@@ -6,6 +6,8 @@ fixture: tests/fixtures/sample.musicxml (C장조 음계: C4~C5, 8분음표 8개)
 """
 
 import os
+from unittest.mock import patch
+
 import pytest
 import guitarpro
 
@@ -208,3 +210,29 @@ def test_tab_hints_ignored_when_string_number_invalid(tmp_path):
     ]
 
     assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
+
+
+def test_parse_failure_has_specific_message(tmp_path):
+    """MusicXML 파싱 자체가 실패하면 그 사실이 메시지에 드러나야 한다."""
+    out = str(tmp_path / "out.gp5")
+
+    with pytest.raises(GpConvertError, match="MusicXML 파싱 실패"):
+        musicxml_to_gp5("/nonexistent/path/bad.musicxml", out)
+
+
+def test_collect_notes_failure_has_specific_message(tmp_path):
+    """음표 수집 단계 실패는 파싱 실패와 다른 메시지여야 한다."""
+    out = str(tmp_path / "out.gp5")
+
+    with patch("app.pipeline.musicxml_to_gp._collect_notes", side_effect=RuntimeError("boom")):
+        with pytest.raises(GpConvertError, match="음표 추출 실패"):
+            musicxml_to_gp5(FIXTURE, out)
+
+
+def test_write_failure_has_specific_message(tmp_path):
+    """GP5 파일 쓰기 실패는 앞 두 단계와 다른 메시지여야 한다."""
+    out = str(tmp_path / "out.gp5")
+
+    with patch("app.pipeline.musicxml_to_gp.guitarpro.write", side_effect=RuntimeError("boom")):
+        with pytest.raises(GpConvertError, match="GP5 쓰기 실패"):
+            musicxml_to_gp5(FIXTURE, out)

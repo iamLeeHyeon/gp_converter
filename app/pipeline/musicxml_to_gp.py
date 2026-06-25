@@ -229,12 +229,12 @@ def musicxml_to_gp5(
     try:
         score = converter.parse(xml_path)
     except Exception as e:
-        raise GpConvertError("gp 생성 실패") from e
+        raise GpConvertError("MusicXML 파싱 실패") from e
 
     try:
         note_data = _collect_notes(score)
     except Exception as e:
-        raise GpConvertError("gp 생성 실패") from e
+        raise GpConvertError("음표 추출 실패") from e
 
     if not note_data:
         raise GpConvertError("변환할 음표 없음")
@@ -243,9 +243,9 @@ def musicxml_to_gp5(
         song = _build_song(note_data, tab_hints=tab_hints)
         guitarpro.write(song, gp5_path)
     except Exception as e:
-        raise GpConvertError("gp 생성 실패") from e
+        raise GpConvertError("GP5 쓰기 실패") from e
 
     if not os.path.exists(gp5_path) or os.path.getsize(gp5_path) == 0:
-        raise GpConvertError("gp 생성 실패")
+        raise GpConvertError("GP5 쓰기 실패")
 
     return gp5_path
