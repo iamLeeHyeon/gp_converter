@@ -11,7 +11,13 @@ from unittest.mock import patch
 import pytest
 import guitarpro
 
-from app.pipeline.musicxml_to_gp import musicxml_to_gp5, GpConvertError, _build_song
+from app.pipeline.musicxml_to_gp import (
+    musicxml_to_gp5,
+    GpConvertError,
+    _build_song,
+    MeasureData,
+    NoteEvent,
+)
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample.musicxml")
 EXPECTED_MIDI = [60, 62, 64, 65, 67, 69, 71, 72]  # C4 D4 E4 F4 G4 A4 B4 C5
@@ -174,10 +180,18 @@ def test_tab_hints_ignored_when_fret_out_of_range(tmp_path):
 
 def test_out_of_range_note_is_logged_and_skipped(caplog):
     """기타 어떤 현으로도 표현 못 하는 음(MIDI 범위 밖)은 건너뛰되, 경고 로그를 남겨야 한다."""
-    note_data = [(30, 1.0), (60, 1.0)]  # 30: 모든 현에서 프렛이 음수(범위 밖) / 60: 정상
+    # 30: 모든 현에서 프렛이 음수(범위 밖) / 60: 정상
+    measures_data = [
+        MeasureData(
+            numerator=4,
+            denominator=4,
+            key_fifths=0,
+            events=[NoteEvent(midi=30, ql=1.0, tied=False), NoteEvent(midi=60, ql=1.0, tied=False)],
+        )
+    ]
 
     with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
-        song = _build_song(note_data)
+        song = _build_song(measures_data)
 
     track = song.tracks[0]
     actual = [
@@ -236,3 +250,145 @@ def test_write_failure_has_specific_message(tmp_path):
     with patch("app.pipeline.musicxml_to_gp.guitarpro.write", side_effect=RuntimeError("boom")):
         with pytest.raises(GpConvertError, match="GP5 쓰기 실패"):
             musicxml_to_gp5(FIXTURE, out)
+
+
+# 실제 박자(3/4 + 3/4)로 이루어진 합성 MusicXML.
+# 두 번째 마디는 <attributes>가 없어 첫 마디 박자를 그대로 이어받는다(carry-forward).
+# 기존 버그(4/4 고정 청크)에서는 마디1의 음표 3개 + 마디2의 음표 1개가 한 마디로
+# 묶여버린다(quarterLength 합 4.0에서 끊기 때문). 올바른 구현은 실제 마디 경계대로
+# [C,D,E] / [F,G,A]로 나뉘어야 한다.
+_METER_CHANGE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_measure_grouping_follows_real_measure_boundaries(tmp_path):
+    """마디 그룹화는 4/4 고정 청크가 아니라 실제 마디 경계를 따라야 한다."""
+    xml_path = tmp_path / "meter.musicxml"
+    xml_path.write_text(_METER_CHANGE_XML, encoding="utf-8")
+    out = str(tmp_path / "meter.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+
+    assert len(track.measures) == 2, f"마디 2개여야 하는데 {len(track.measures)}개"
+
+    string_val = {s.number: s.value for s in track.strings}
+    per_measure_midi = [
+        [string_val[note.string] + note.value for voice in measure.voices for beat in voice.beats for note in beat.notes]
+        for measure in track.measures
+    ]
+    assert per_measure_midi == [[60, 62, 64], [65, 67, 69]], (
+        f"마디 경계가 밀림: {per_measure_midi}"
+    )
+
+    # 두 번째 마디도 (carry-forward로) 3/4 박자를 유지해야 한다.
+    assert track.measures[0].timeSignature.numerator == 3
+    assert track.measures[1].timeSignature.numerator == 3
+
+
+_KEY_SIGNATURE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>2</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_key_signature_propagated_to_gp5(tmp_path):
+    """MusicXML의 조표(fifths)가 GP5 마디 헤더에 반영돼야 한다."""
+    xml_path = tmp_path / "keysig.musicxml"
+    xml_path.write_text(_KEY_SIGNATURE_XML, encoding="utf-8")
+    out = str(tmp_path / "keysig.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+
+    assert track.measures[0].keySignature == guitarpro.KeySignature.DMajor
+
+
+_TIE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>2</duration><type>half</type>
+        <tie type="start"/>
+        <notations><tied type="start"/></notations>
+      </note>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>2</duration><type>half</type>
+        <tie type="stop"/>
+        <notations><tied type="stop"/></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_tied_note_marked_as_tie_type_not_normal(tmp_path):
+    """이음줄로 이어지는 두 번째 음은 NoteType.tie로 표시돼야 한다(새 발음이 아님)."""
+    xml_path = tmp_path / "tie.musicxml"
+    xml_path.write_text(_TIE_XML, encoding="utf-8")
+    out = str(tmp_path / "tie.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    notes = [
+        note
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    assert len(notes) == 2
+    assert notes[0].type == guitarpro.NoteType.normal, "이음줄 시작 음은 새 발음이어야 함"
+    assert notes[1].type == guitarpro.NoteType.tie, "이음줄로 이어지는 음은 tie 타입이어야 함"
