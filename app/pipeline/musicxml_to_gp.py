@@ -125,6 +125,33 @@ def _midi_to_string_fret(
     return best
 
 
+def _assign_chord_strings(
+    pitches: List[int],
+    strings: List[Tuple[int, int]],
+) -> List[Optional[Tuple[int, int]]]:
+    """화음의 각 음에 (현 번호, 프렛)을 배정한다.
+
+    pitches는 MIDI 내림차순(높은음 먼저)이어야 한다. 높은음부터 처리하며,
+    각 음마다 후보 현을 프렛 낮은순으로 정렬해두고 그리디하게 비어있는 첫
+    현을 잡는다(1순위가 이미 다른 음에 쓰였으면 다음 후보로 넘어간다).
+    모든 후보 현이 막히면 그 음은 None을 반환한다(화음 나머지는 계속 처리).
+    """
+    used_strings: set = set()
+    result: List[Optional[Tuple[int, int]]] = []
+    for midi in pitches:
+        candidates = sorted(
+            (midi - sval, snum) for snum, sval in strings if 0 <= midi - sval <= 24
+        )
+        placed = None
+        for fret, snum in candidates:
+            if snum not in used_strings:
+                used_strings.add(snum)
+                placed = (snum, fret)
+                break
+        result.append(placed)
+    return result
+
+
 def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
     """quarterLength → (GP Duration.value, isDotted).
 

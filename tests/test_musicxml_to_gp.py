@@ -17,6 +17,7 @@ from app.pipeline.musicxml_to_gp import (
     musicxml_to_gp5,
     GpConvertError,
     _build_song,
+    _assign_chord_strings,
     MeasureData,
     NoteEvent,
 )
@@ -642,3 +643,13 @@ def test_phantom_leading_rest_dropped_when_it_overflows_measure(tmp_path, caplog
 
     assert len(caplog.records) == 1
     assert "유령" in caplog.records[0].message or "초과" in caplog.records[0].message
+
+
+def test_assign_chord_strings_no_conflict():
+    """충돌 없는 화음은 각 음마다 가장 낮은 프렛의 현을 받아야 한다."""
+    from app.pipeline.musicxml_to_gp import _STANDARD_STRINGS
+
+    # E5(65) C5(60) A4(57) F4(53) — MIDI 내림차순
+    result = _assign_chord_strings([65, 60, 57, 53], _STANDARD_STRINGS)
+
+    assert result == [(1, 1), (2, 1), (3, 2), (4, 3)]
