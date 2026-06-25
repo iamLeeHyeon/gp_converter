@@ -50,6 +50,30 @@ def test_nonzero_exit_raises(tmp_path):
             pdf_to_musicxml(str(pdf), str(out_dir), audiveris_cmd="audiveris", timeout=10)
 
 
+def test_includes_pdf_resolution_constant(tmp_path):
+    """디폴트 해상도는 일부 음표(플래그·노트헤드)를 오인식하므로 400dpi로 올려서
+    호출해야 한다. 실제 검증: 같은 PDF를 디폴트/400dpi로 각각 돌려보니 400dpi에서
+    8분음표 꼬리를 화음으로 오인식하던 게 정확히 고쳐짐."""
+    pdf = tmp_path / "in.pdf"
+    pdf.write_bytes(b"%PDF-1.4 dummy")
+    out_dir = tmp_path / "out"
+    captured_cmd = {}
+
+    def fake_run(cmd, **kwargs):
+        captured_cmd["cmd"] = cmd
+        os.makedirs(out_dir, exist_ok=True)
+        (out_dir / "in.mxl").write_bytes(b"PK\x03\x04fake")
+        class R: returncode = 0; stdout = b""; stderr = b""
+        return R()
+
+    with patch("app.pipeline.audiveris.subprocess.run", side_effect=fake_run):
+        pdf_to_musicxml(str(pdf), str(out_dir), audiveris_cmd="audiveris", timeout=10)
+
+    cmd = captured_cmd["cmd"]
+    idx = cmd.index("-constant")
+    assert cmd[idx + 1] == "org.audiveris.omr.image.ImageLoading.pdfResolution=400"
+
+
 def test_multiple_mxl_outputs_pick_deterministically(tmp_path):
     """여러 .mxl 산출물이 있으면 파일시스템 순서에 의존하지 않고
     항상 같은(정렬된) 파일을 선택해야 한다."""
