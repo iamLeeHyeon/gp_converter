@@ -739,3 +739,57 @@ def test_chord_all_notes_placed_on_distinct_strings(tmp_path):
     # 적힌 E5,C5,A4,F4(76,72,69,65) -1옥타브 = 64,60,57,53
     actual_midi = sorted(string_val[n.string] + n.value for n in notes)
     assert actual_midi == [53, 57, 60, 64]
+
+
+_CHORD_PLUS_SINGLE_NOTES_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>E</step><octave>5</octave></pitch>
+        <duration>2</duration><type>half</type>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>2</duration><type>half</type>
+      </note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_tab_hints_apply_only_to_single_note_events_when_chord_present(tmp_path):
+    """화음이 섞인 마디에서 tab_hints 개수는 단일음 이벤트 개수만 따져야 한다.
+
+    이 마디는 화음(half, 2음) 1개 + 단일음(quarter) 2개다. tab_hints를
+    단일음 2개에 맞춰 주면(화음은 세지 않음) 화음은 휴리스틱으로, 단일음
+    2개는 힌트로 그대로 들어가야 한다.
+    """
+    xml_path = tmp_path / "chord_plus_single.musicxml"
+    xml_path.write_text(_CHORD_PLUS_SINGLE_NOTES_XML, encoding="utf-8")
+    out = str(tmp_path / "chord_plus_single.gp5")
+
+    # 단일음 2개(C4,D4)에 대한 가짜 힌트 — 휴리스틱이면 다른 값이 나오게 일부러 6번줄로
+    fake_hints = [(6, 20), (6, 21)]
+    musicxml_to_gp5(str(xml_path), out, tab_hints=fake_hints)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    beats = [beat for voice in track.measures[0].voices for beat in voice.beats]
+
+    assert len(beats) == 3  # 화음 1비트 + 단일음 2비트
+    chord_beat, single1, single2 = beats
+
+    assert len(chord_beat.notes) == 2  # 화음은 힌트 무시, 2음 다 살아있음
+    assert (single1.notes[0].string, single1.notes[0].value) == (6, 20)
+    assert (single2.notes[0].string, single2.notes[0].value) == (6, 21)

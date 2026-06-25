@@ -256,7 +256,8 @@ def _build_song(
     (탭보표는 한 줄짜리 멜로디만 읽으므로 다성에는 대응 불가).
     """
     total_notes = sum(
-        1 for m in measures_data for ev in m.voices[0] if not ev.is_rest
+        1 for m in measures_data for ev in m.voices[0]
+        if not ev.is_rest and len(ev.pitches) == 1
     )
     if tab_hints is not None and len(tab_hints) != total_notes:
         tab_hints = None
