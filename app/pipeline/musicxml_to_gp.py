@@ -2,7 +2,9 @@
 MusicXML → Guitar Pro 5 변환기 (PyGuitarPro 기반)
 
 설계 결정:
-- 코드(Chord): 코드에서 가장 높은 음(최대 MIDI 값)만 사용한다. MVP 단순화.
+- 코드(Chord): 모든 구성음을 서로 다른 현/프렛에 동시발음으로 배정한다
+  (_assign_chord_strings). 높은음부터 그리디하게 배정하고, 1순위 현이
+  막히면 다음 후보로 넘어간다(fallback). 끝까지 못 들어가는 음만 건너뛴다.
 - 현/프렛 배정: MIDI 값을 줄 수 있는 모든 현에서 유효(0~24 프렛)한 것 중
   가장 낮은 프렛 번호를 선택한다. 동점이면 가장 높은 줄 번호(낮은 음) 우선.
   유효한 현이 없으면(MIDI가 범위 밖) 해당 음표를 건너뛴다.
@@ -214,7 +216,8 @@ def _collect_notes(score) -> List[MeasureData]:
     """첫 번째 파트에서 마디 단위 (박자, 조표, 보이스별 음표/쉼표) 목록을 추출한다.
 
     박자/조표는 명시된 마디가 없으면 이전 마디 값을 이어받는다(carry-forward).
-    Chord는 최고음(최대 MIDI) 하나만 사용한다.
+    Chord는 모든 구성음을 MIDI 내림차순으로 pitches에 담는다(현 배정은
+    _build_song의 _assign_chord_strings에서 처리).
     이음줄로 이어지는(continue/stop) 음은 tied=True로 표시한다.
     쉼표도 길이가 있는 이벤트로 포함한다(건너뛰면 그 뒤 음표들이 마디 박자
     총합을 못 채워 GP5가 깨진다).
