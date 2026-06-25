@@ -917,3 +917,94 @@ def test_chord_tie_tracked_per_pitch_not_shared_across_whole_chord(tmp_path):
     assert set(by_midi.keys()) == {67, 71}
     assert by_midi[67].type == guitarpro.NoteType.tie, "G5는 이어지는 음(tie stop)이어야 함"
     assert by_midi[71].type == guitarpro.NoteType.normal, "B5는 새로 치는 음(tie start)이어야 함"
+
+
+_CHORD_TIE_STRING_CARRYOVER_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <tie type="start"/>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <tie type="start"/>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <tie type="stop"/>
+        <tie type="start"/>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <tie type="stop"/>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <tie type="stop"/>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>B</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <tie type="start"/>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_tied_chord_note_keeps_same_string_across_beats(tmp_path):
+    """화음 안 이어지는 음은 직전 비트와 같은 줄을 유지해야 한다(실측 36마디 버그).
+
+    1·2비트: G5+C5 화음(둘 다 이어짐). 3비트: G5(이어짐)+B5(새 음, G5와 같은
+    화음에 끼어들며 줄을 다툼). G5가 1~2비트에서 쓰던 줄을 그대로 못 지키면,
+    GP5 포맷은 이어지는 음의 프렛 값을 직전 비트의 같은 줄 값으로 덮어써서
+    엉뚱한 음높이가 된다(여기서는 C5 자리를 베껴 깨진다). 그래서 G5는 3비트
+    에서도 1~2비트와 같은 줄에 있어야 하고, B5는 남은 줄에 새로 배정돼야
+    한다.
+    """
+    xml_path = tmp_path / "chord_tie_carryover.musicxml"
+    xml_path.write_text(_CHORD_TIE_STRING_CARRYOVER_XML, encoding="utf-8")
+    out = str(tmp_path / "chord_tie_carryover.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    string_val = {s.number: s.value for s in track.strings}
+    beats = [beat for voice in track.measures[0].voices for beat in voice.beats]
+    assert len(beats) == 3
+
+    def _string_of(beat, midi):
+        for n in beat.notes:
+            if string_val[n.string] + n.value == midi:
+                return n.string
+        raise AssertionError(f"비트에 MIDI {midi} 음이 없음: {beat.notes}")
+
+    # 적힌 G5(79) -1옥타브 = 67
+    g5_string_beat1 = _string_of(beats[0], 67)
+    g5_string_beat2 = _string_of(beats[1], 67)
+    g5_string_beat3 = _string_of(beats[2], 67)
+    assert g5_string_beat1 == g5_string_beat2 == g5_string_beat3, (
+        "이어지는 G5가 비트마다 줄이 바뀌면 안 됨"
+    )
+
+    # 적힌 B5(83) -1옥타브 = 71, G5와 다른 줄이어야 함
+    b5_string_beat3 = _string_of(beats[2], 71)
+    assert b5_string_beat3 != g5_string_beat3

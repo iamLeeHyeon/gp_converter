@@ -18,7 +18,10 @@ MusicXML → Guitar Pro 5 변환기 (PyGuitarPro 기반)
   따로 추적한다(NoteEvent.tied가 pitches와 같은 길이의 리스트) — music21
   Chord.tie는 구성음 중 하나의 tie만 대표로 골라 화음 전체에 적용해서, 화음
   안에서 음마다 tie 상태가 다른 실제 케이스(한 음은 이어지고 한 음은 새로
-  침)를 못 구분하기 때문이다.
+  침)를 못 구분하기 때문이다. 이어지는 음은 직전 비트와 같은 줄을 그대로
+  유지한다(_assign_with_tie_carryover) — GP5는 이어지는 음의 프렛 값을 따로
+  안 믿고 직전 비트의 같은 줄 값을 그대로 베껴오므로, 화음 구성이 바뀌며
+  같은 음이 다른 줄로 옮겨가면 엉뚱한 음높이로 깨진다.
 - 점음표: quarterLength가 점음표 값(1.5×기본값)이면 isDotted=True로 설정한다.
 - 매핑 불가 박자: 가장 가까운 기본 박자값으로 내림한다(문서화).
 
@@ -32,7 +35,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import guitarpro
 import guitarpro.models as gpm
@@ -162,6 +165,44 @@ def _assign_chord_strings(
                 break
         result.append(placed)
     return result
+
+
+def _assign_with_tie_carryover(
+    pitches: List[int],
+    tied: List[bool],
+    strings: List[Tuple[int, int]],
+    prev_pitch_to_string: Dict[int, int],
+) -> List[Optional[Tuple[int, int]]]:
+    """이음줄로 이어지는 음은 직전 비트와 같은 줄을 유지하고, 새로 치는
+    음만 남은 줄 중에서 새로 배정한다.
+
+    GP5 포맷은 이어지는 음(NoteType.tie)의 프렛 값을 따로 믿지 않고 직전
+    비트의 같은 줄 값을 그대로 이어받는다(실측: Flower of the Field 36마디
+    — 화음 구성이 비트마다 바뀌면서 이어지는 음이 다른 줄로 옮겨가, 결과적
+    으로 직전 비트의 다른 음 값을 베껴 엉뚱한 음높이로 깨졌다). 그래서
+    이어지는 음은 줄을 새로 그리디 배정하면 안 되고, 직전 비트에서 쓰던
+    줄을 그대로 고정해야 한다.
+    """
+    placements: List[Optional[Tuple[int, int]]] = [None] * len(pitches)
+    pinned_strings: set = set()
+    string_val = dict(strings)
+
+    fresh_indices = []
+    for i, (midi, is_tied) in enumerate(zip(pitches, tied)):
+        prev_string = prev_pitch_to_string.get(midi) if is_tied else None
+        if prev_string is not None:
+            placements[i] = (prev_string, midi - string_val[prev_string])
+            pinned_strings.add(prev_string)
+        else:
+            fresh_indices.append(i)
+
+    remaining_strings = [s for s in strings if s[0] not in pinned_strings]
+    fresh_pitches = [pitches[i] for i in fresh_indices]
+    fresh_placements = _assign_chord_strings(fresh_pitches, remaining_strings)
+    for i, placement in zip(fresh_indices, fresh_placements):
+        placements[i] = placement
+
+    return placements
 
 
 def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
@@ -312,6 +353,10 @@ def _build_song(
 
     def _fill_voice(voice: gpm.Voice, events: List[NoteEvent], use_hints: bool) -> None:
         beats: List[Beat] = []
+        # 이어지는 음(tie)이 직전 비트와 같은 줄을 유지하도록 추적한다
+        # (pitch → 그 음이 현재 놓인 줄 번호). 쉼표를 만나면 비운다.
+        prev_pitch_to_string: Dict[int, int] = {}
+
         for ev in events:
             gp_val, is_dotted = _ql_to_gp_duration(ev.ql)
 
@@ -322,19 +367,23 @@ def _build_song(
                 beat.duration.isDotted = is_dotted
                 beat.notes = []
                 beats.append(beat)
+                prev_pitch_to_string = {}
                 continue
 
             if len(ev.pitches) >= 2:
                 # 화음: tab_hints는 무시(힌트 1개로 다중음 표현 불가)하고
-                # 항상 _assign_chord_strings로 배정한다.
-                placements = _assign_chord_strings(ev.pitches, strings)
+                # 이어지는 음은 직전 줄을 유지, 새 음만 남은 줄에 배정한다.
+                placements = _assign_with_tie_carryover(
+                    ev.pitches, ev.tied, strings, prev_pitch_to_string
+                )
                 beat = Beat(voice=voice)
                 beat.status = BeatStatus.normal
                 beat.duration.value = gp_val
                 beat.duration.isDotted = is_dotted
 
                 gnotes = []
-                for placement, note_tied in zip(placements, ev.tied):
+                new_prev: Dict[int, int] = {}
+                for midi, placement, note_tied in zip(ev.pitches, placements, ev.tied):
                     if placement is None:
                         logger.warning("화음 음 일부가 어떤 현으로도 표현할 수 없어 건너뜀")
                         continue
@@ -344,6 +393,8 @@ def _build_song(
                     gnote.string = snum
                     gnote.type = NoteType.tie if note_tied else NoteType.normal
                     gnotes.append(gnote)
+                    new_prev[midi] = snum
+                prev_pitch_to_string = new_prev
                 if not gnotes:
                     # 화음 전체 음이 범위 밖이라 하나도 못 배정되면, 빈
                     # normal 비트(의미상 잘못된 상태) 대신 rest로 처리한다.
@@ -356,10 +407,13 @@ def _build_song(
             if hint is not None:
                 snum, fret = hint
             else:
-                sf = _midi_to_string_fret(ev.pitches[0], strings)
+                sf = _assign_with_tie_carryover(
+                    ev.pitches, ev.tied, strings, prev_pitch_to_string
+                )[0]
                 if sf is None:
                     # 범위 밖 음표는 건너뜀
                     logger.warning("MIDI %d는 어떤 현으로도 표현할 수 없어 건너뜀", ev.pitches[0])
+                    prev_pitch_to_string = {}
                     continue
                 snum, fret = sf
 
@@ -374,6 +428,7 @@ def _build_song(
             gnote.type = NoteType.tie if ev.tied[0] else NoteType.normal
             beat.notes = [gnote]
             beats.append(beat)
+            prev_pitch_to_string = {ev.pitches[0]: snum}
         voice.beats = beats
 
     def _fill_measure(measure: gpm.Measure, md: MeasureData) -> None:
