@@ -46,7 +46,8 @@ _STANDARD_STRINGS: List[Tuple[int, int]] = [
 
 # quarterLength → GP Duration.value 매핑
 _QL_TO_GPV = {4.0: 1, 2.0: 2, 1.0: 4, 0.5: 8, 0.25: 16, 0.125: 32}
-_DOTTED_QL_TO_GPV = {3.0: 1, 1.5: 2, 0.75: 4, 0.375: 8, 0.1875: 16}
+# 점음표 ql = (4/value)*1.5 이므로 value = 6/ql. (예: 점8분음표 0.75ql → value=8)
+_DOTTED_QL_TO_GPV = {6.0: 1, 3.0: 2, 1.5: 4, 0.75: 8, 0.375: 16, 0.1875: 32}
 
 # 클래식/핑거스타일 기타 표준악보(탭 아님) 표기 관행: 작은 "8" 표기 유무와
 # 무관하게 적힌 음보다 항상 1옥타브 낮게 소리난다. Audiveris는 그려진 대로
@@ -77,11 +78,15 @@ _FIFTHS_TO_KEYSIG = {
 
 @dataclass
 class NoteEvent:
-    """한 음표(또는 화음 최고음)의 (음높이, 길이, 이음줄 연속 여부)."""
+    """한 음표(또는 화음 최고음)의 (음높이, 길이, 이음줄 연속 여부).
 
-    midi: int
+    쉼표면 is_rest=True이고 midi는 None이다.
+    """
+
+    midi: Optional[int]
     ql: float
     tied: bool = False  # True면 직전 음에서 이어지는 연속음(NoteType.tie)
+    is_rest: bool = False
 
 
 @dataclass
@@ -129,11 +134,17 @@ def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
 
 
 def _collect_notes(score) -> List[MeasureData]:
-    """첫 번째 파트에서 마디 단위 (박자, 조표, 음표) 목록을 추출한다.
+    """첫 번째 파트에서 마디 단위 (박자, 조표, 음표/쉼표) 목록을 추출한다.
 
     박자/조표는 명시된 마디가 없으면 이전 마디 값을 이어받는다(carry-forward).
     Chord는 최고음(최대 MIDI) 하나만 사용한다.
     이음줄로 이어지는(continue/stop) 음은 tied=True로 표시한다.
+    쉼표도 길이가 있는 이벤트로 포함한다(건너뛰면 그 뒤 음표들이 마디 박자
+    총합을 못 채워 GP5가 깨진다).
+    한 마디에 보이스가 여러 개면(예: <backup>으로 만든 2성) 첫 번째 보이스
+    (주 멜로디)만 쓰고 나머지는 버린다 — 코드에서 최고음만 쓰는 것과 같은
+    MVP 단순화 원칙. 전부 펴서 합치면 마디당 박자 총합이 보이스 수만큼
+    배가 되어 GP5가 깨진다.
     """
     part = score.parts[0]
     measures = list(part.getElementsByClass(m21stream.Measure))
@@ -148,17 +159,21 @@ def _collect_notes(score) -> List[MeasureData]:
         if m.keySignature is not None:
             key_fifths = m.keySignature.sharps
 
+        source = m.voices[0] if m.hasVoices() else m
+
         events: List[NoteEvent] = []
-        for n in m.recurse().notes:
+        for n in source.notesAndRests:
+            ql = float(n.duration.quarterLength)
+            if isinstance(n, m21note.Rest):
+                events.append(NoteEvent(midi=None, ql=ql, is_rest=True))
+                continue
             tied = n.tie is not None and n.tie.type in ("continue", "stop")
-            if isinstance(n, m21note.Note):
-                midi = n.pitch.midi
-            elif isinstance(n, m21chord.Chord):
+            if isinstance(n, m21chord.Chord):
                 midi = max(p.midi for p in n.pitches)
             else:
-                continue
+                midi = n.pitch.midi
             midi += _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
-            events.append(NoteEvent(midi, float(n.duration.quarterLength), tied))
+            events.append(NoteEvent(midi, ql, tied))
 
         result.append(MeasureData(numerator, denominator, key_fifths, events))
 
@@ -171,10 +186,10 @@ def _build_song(
 ) -> guitarpro.Song:
     """마디 목록으로 GP Song 객체를 생성한다.
 
-    tab_hints가 전체 음표 개수와 같으면 각 음표에 명시적 (현,프렛)을 쓴다.
-    길이가 다르면 tab_hints를 무시하고 기존 휴리스틱(최저프렛)을 쓴다.
+    tab_hints가 전체 음표 개수(쉼표 제외)와 같으면 각 음표에 명시적 (현,프렛)을
+    쓴다. 길이가 다르면 tab_hints를 무시하고 기존 휴리스틱(최저프렛)을 쓴다.
     """
-    total_notes = sum(len(m.events) for m in measures_data)
+    total_notes = sum(1 for m in measures_data for ev in m.events if not ev.is_rest)
     if tab_hints is not None and len(tab_hints) != total_notes:
         tab_hints = None
 
@@ -208,6 +223,17 @@ def _build_song(
         voice = measure.voices[0]
         beats: List[Beat] = []
         for ev in md.events:
+            gp_val, is_dotted = _ql_to_gp_duration(ev.ql)
+
+            if ev.is_rest:
+                beat = Beat(voice=voice)
+                beat.status = BeatStatus.rest
+                beat.duration.value = gp_val
+                beat.duration.isDotted = is_dotted
+                beat.notes = []
+                beats.append(beat)
+                continue
+
             hint = _next_hint()
             if hint is not None:
                 snum, fret = hint
@@ -218,7 +244,6 @@ def _build_song(
                     logger.warning("MIDI %d는 어떤 현으로도 표현할 수 없어 건너뜀", ev.midi)
                     continue
                 snum, fret = sf
-            gp_val, is_dotted = _ql_to_gp_duration(ev.ql)
 
             beat = Beat(voice=voice)
             beat.status = BeatStatus.normal
@@ -295,7 +320,7 @@ def musicxml_to_gp5(
     except Exception as e:
         raise GpConvertError("음표 추출 실패") from e
 
-    if not measures_data or not any(m.events for m in measures_data):
+    if not any(not ev.is_rest for m in measures_data for ev in m.events):
         raise GpConvertError("변환할 음표 없음")
 
     try:

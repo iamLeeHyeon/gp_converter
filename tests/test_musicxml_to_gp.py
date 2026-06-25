@@ -443,3 +443,149 @@ def test_standard_notation_pitch_shifted_down_one_octave(tmp_path):
     ]
 
     assert actual_midi == [60], f"적힌 C5(72)가 1옥타브 낮은 C4(60)로 소리나야 하는데: {actual_midi}"
+
+
+_REST_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><rest/><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_rest_represented_as_silent_beat(tmp_path):
+    """쉼표는 그냥 건너뛰지 말고 소리 없는(rest) 비트로 들어가야 한다.
+
+    버그였던 동작: music21 Stream.notes는 Rest를 제외하므로 쉼표가 통째로
+    빠져, 그 뒤 음표들이 마디 박자 총합을 못 채워 GP5가 깨졌다(스샷에서
+    쉼표·음표 글리프가 겹쳐 보이는 증상).
+    """
+    xml_path = tmp_path / "rest.musicxml"
+    xml_path.write_text(_REST_XML, encoding="utf-8")
+    out = str(tmp_path / "rest.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    string_val = {s.number: s.value for s in track.strings}
+
+    beats = [
+        beat
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+    ]
+
+    assert len(beats) == 4, f"쉼표 1개 + 음표 3개 = 비트 4개여야 하는데 {len(beats)}개"
+    assert beats[0].status == guitarpro.models.BeatStatus.rest
+    assert beats[0].notes == []
+
+    rest_pitches = [string_val[n.string] + n.value for b in beats[1:] for n in b.notes]
+    assert rest_pitches == [48, 50, 52]  # C4 D4 E4(적힌 음) -1옥타브 = C3 D3 E3
+
+
+_MULTI_VOICE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>2</voice><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_second_voice_ignored_when_measure_has_multiple_voices(tmp_path):
+    """여러 보이스(다성)가 있으면 첫 번째 보이스(주 멜로디)만 쓰고 나머지는 버린다.
+
+    버그였던 동작: recurse()가 보이스 구분 없이 전부 한 줄로 펴버려서, 마디
+    하나에 voice1 박자 총합 + voice2 박자 총합이 그대로 더해져(이 예시면
+    4.0+4.0=8.0) 마디당 박자 한도를 두 배로 넘기며 GP5가 깨졌다.
+    """
+    xml_path = tmp_path / "multivoice.musicxml"
+    xml_path.write_text(_MULTI_VOICE_XML, encoding="utf-8")
+    out = str(tmp_path / "multivoice.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    string_val = {s.number: s.value for s in track.strings}
+
+    actual_midi = [
+        string_val[note.string] + note.value
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    # voice1(C,D,E,F → -1옥타브 후 48,50,52,53)만 남고 voice2(G)는 버려져야 함
+    assert actual_midi == [48, 50, 52, 53], f"voice2가 섞여 들어옴: {actual_midi}"
+
+
+_DOTTED_DURATIONS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>8</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>24</duration><type>half</type><dot/></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>6</duration><type>eighth</type><dot/></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><type>16th</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_dotted_durations_preserve_real_length(tmp_path):
+    """점음표 길이가 실제보다 2배로 늘어나면 안 된다.
+
+    버그였던 동작: _DOTTED_QL_TO_GPV가 한 단계 더 큰 음표 모양의 GP value를
+    써서(예: 점8분음표 0.75ql인데 점4분음표 모양 value=4로 인코딩), GP5에
+    실제로 쓰이는 길이가 1.5ql(정확히 2배)이 됐다. 점온음표(3.0)·점8분음표
+    (0.75)·16분음표(0.25) 합이 정확히 4/4 한 마디(4.0ql)를 채워야 한다.
+    """
+    xml_path = tmp_path / "dotted.musicxml"
+    xml_path.write_text(_DOTTED_DURATIONS_XML, encoding="utf-8")
+    out = str(tmp_path / "dotted.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+
+    beats = [beat for voice in track.measures[0].voices for beat in voice.beats]
+    actual_qls = [beat.duration.time / guitarpro.models.Duration.quarterTime for beat in beats]
+
+    assert actual_qls == [3.0, 0.75, 0.25], f"점음표 길이가 틀어짐: {actual_qls}"
+    assert sum(actual_qls) == 4.0, f"마디 박자 총합이 4.0이어야 하는데 {sum(actual_qls)}"
