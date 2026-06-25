@@ -62,6 +62,14 @@ class JobStore:
         return Job(**data)
 
     def update(self, job_id: str, **fields) -> None:
+        """job 필드를 갱신한다.
+
+        read-modify-write이며 전체가 원자적이지 않다(개별 _write만 원자적).
+        같은 job_id에 동시에 호출하는 caller가 둘 이상이면 갱신이 덮어써질 수
+        있다. 현재 설계는 job마다 백그라운드 워커가 하나뿐이라는 가정에
+        의존한다 — 이 가정이 깨지면(예: 같은 job을 여러 워커가 처리) 락이
+        필요하다.
+        """
         job = self.get(job_id)
         if job is None:
             raise KeyError(job_id)
