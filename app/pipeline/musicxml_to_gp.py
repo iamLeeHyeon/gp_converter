@@ -18,6 +18,7 @@ PyGuitarPro가 GP5 작성 시 같은 마디의 비트들을 하나로 합쳐 음
 
 from __future__ import annotations
 
+import logging
 import os
 from fractions import Fraction
 from typing import List, Optional, Tuple
@@ -27,6 +28,9 @@ import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
 from music21 import converter, note as m21note, chord as m21chord
+
+
+logger = logging.getLogger(__name__)
 
 
 class GpConvertError(Exception):
@@ -156,6 +160,7 @@ def _build_song(
                 sf = _midi_to_string_fret(midi, strings)
                 if sf is None:
                     # 범위 밖 음표는 건너뜀
+                    logger.warning("MIDI %d는 어떤 현으로도 표현할 수 없어 건너뜀", midi)
                     continue
                 snum, fret = sf
             gp_val, is_dotted = _ql_to_gp_duration(ql)

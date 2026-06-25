@@ -9,7 +9,7 @@ import os
 import pytest
 import guitarpro
 
-from app.pipeline.musicxml_to_gp import musicxml_to_gp5, GpConvertError
+from app.pipeline.musicxml_to_gp import musicxml_to_gp5, GpConvertError, _build_song
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample.musicxml")
 EXPECTED_MIDI = [60, 62, 64, 65, 67, 69, 71, 72]  # C4 D4 E4 F4 G4 A4 B4 C5
@@ -168,6 +168,27 @@ def test_tab_hints_ignored_when_fret_out_of_range(tmp_path):
     ]
 
     assert actual == [(2, 1), (2, 3), (1, 0), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8)]
+
+
+def test_out_of_range_note_is_logged_and_skipped(caplog):
+    """기타 어떤 현으로도 표현 못 하는 음(MIDI 범위 밖)은 건너뛰되, 경고 로그를 남겨야 한다."""
+    note_data = [(30, 1.0), (60, 1.0)]  # 30: 모든 현에서 프렛이 음수(범위 밖) / 60: 정상
+
+    with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
+        song = _build_song(note_data)
+
+    track = song.tracks[0]
+    actual = [
+        (note.string, note.value)
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+    assert actual == [(2, 1)]  # 30은 스킵되고 60(string2 fret1)만 남음
+
+    assert len(caplog.records) == 1
+    assert "30" in caplog.records[0].message
 
 
 def test_tab_hints_ignored_when_string_number_invalid(tmp_path):
