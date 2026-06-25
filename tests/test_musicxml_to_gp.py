@@ -668,3 +668,13 @@ def test_assign_chord_strings_falls_back_when_first_choice_taken():
     result = _assign_chord_strings([65, 64], _STANDARD_STRINGS)
 
     assert result == [(1, 1), (2, 5)]
+
+
+def test_assign_chord_strings_skips_unplaceable_note_only():
+    """화음 안 한 음이 어떤 현으로도 표현 못 하면 그 음만 None, 나머지는 살아야 한다."""
+    from app.pipeline.musicxml_to_gp import _STANDARD_STRINGS
+
+    # 100: 모든 현에서 프렛이 24 초과(범위 밖) / 64: 정상(string1 fret0)
+    result = _assign_chord_strings([100, 64], _STANDARD_STRINGS)
+
+    assert result == [None, (1, 0)]
