@@ -58,3 +58,45 @@ def test_pdf_to_gp5_real(tmp_path):
     assert actual_midi == EXPECTED_MIDI, (
         f"음정 시퀀스 불일치(OMR 인식 오차 가능)\n예상: {EXPECTED_MIDI}\n실제: {actual_midi}"
     )
+
+
+TAB_FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "tab_sample.pdf")
+
+# Task 3에서 실측 확인한 탭 (현,프렛) 순서열. 휴리스틱과 다른 지점(E4→(2,5))이
+# 그대로 살아있어야 탭 힌트가 실제로 쓰였다고 볼 수 있다.
+EXPECTED_TAB_STRING_FRET = [
+    (2, 1), (2, 3), (2, 5), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8),
+    (1, 8), (1, 7), (1, 5), (1, 3), (1, 1), (2, 5), (2, 3), (2, 1),
+    (2, 1), (2, 3), (2, 5), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8),
+    (1, 8), (1, 7), (1, 5), (1, 3), (1, 1), (2, 5), (2, 3), (2, 1),
+]
+
+
+@pytest.mark.integration
+def test_pdf_with_tab_uses_tab_hints_not_heuristic(tmp_path):
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+
+    gp5_path = run_conversion(
+        TAB_FIXTURE,
+        str(workdir),
+        audiveris_cmd=os.environ.get("GPC_AUDIVERIS_CMD", _DEFAULT_AUDIVERIS_CMD),
+        tuxguitar_cmd="unused",
+        timeout=300,
+    )
+
+    song = guitarpro.parse(gp5_path)
+    track = song.tracks[0]
+
+    actual = [
+        (note.string, note.value)
+        for measure in track.measures
+        for voice in measure.voices
+        for beat in voice.beats
+        for note in beat.notes
+    ]
+
+    assert actual == EXPECTED_TAB_STRING_FRET, (
+        f"탭 힌트가 적용되지 않았을 가능성(휴리스틱으로 폴백됐는지 확인)\n"
+        f"예상: {EXPECTED_TAB_STRING_FRET}\n실제: {actual}"
+    )
