@@ -593,3 +593,52 @@ def test_dotted_durations_preserve_real_length(tmp_path):
 
     assert actual_qls == [3.0, 0.75, 0.25], f"점음표 길이가 틀어짐: {actual_qls}"
     assert sum(actual_qls) == 4.0, f"마디 박자 총합이 4.0이어야 하는데 {sum(actual_qls)}"
+
+
+_PHANTOM_LEADING_REST_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><rest/><duration>1</duration><type>eighth</type></note>
+      <note><pitch><step>E</step><octave>6</octave></pitch><duration>8</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_phantom_leading_rest_dropped_when_it_overflows_measure(tmp_path, caplog):
+    """Audiveris가 실제로 없는 선행 쉼표를 만들어내 마디가 넘치면 제거해야 한다.
+
+    실측(Flower of the Field, 마디27): 원본 페이지에는 온음표 하나(이전 마디에서
+    이음줄로 이어짐)만 있는데, Audiveris가 그 앞에 존재하지 않는 8분쉼표를
+    만들어내 마디 박자합이 4.5(>4.0)가 됐다. 빼면 정확히 4.0이 되는 선행
+    쉼표만 좁게 제거한다(실제로 있는 쉼표를 잘못 지우면 안 되므로
+    test_rest_represented_as_silent_beat가 그 회귀를 막아준다).
+    """
+    xml_path = tmp_path / "phantom_rest.musicxml"
+    xml_path.write_text(_PHANTOM_LEADING_REST_XML, encoding="utf-8")
+    out = str(tmp_path / "phantom_rest.gp5")
+
+    with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
+        musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    string_val = {s.number: s.value for s in track.strings}
+
+    beats = [beat for voice in track.measures[0].voices for beat in voice.beats]
+    assert len(beats) == 1, f"유령 쉼표가 제거 안 됨: {len(beats)}개 비트"
+    assert beats[0].status == guitarpro.models.BeatStatus.normal
+    midi = string_val[beats[0].notes[0].string] + beats[0].notes[0].value
+    assert midi == 76  # E6(88) -1옥타브 = 76
+    assert beats[0].duration.time / guitarpro.models.Duration.quarterTime == 4.0
+
+    assert len(caplog.records) == 1
+    assert "유령" in caplog.records[0].message or "초과" in caplog.records[0].message

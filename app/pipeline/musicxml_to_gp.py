@@ -158,6 +158,30 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     return events
 
 
+def _drop_phantom_leading_rest(events: List[NoteEvent], expected_ql: float) -> List[NoteEvent]:
+    """첫 이벤트가 쉼표이고 빼면 정확히 마디 길이가 되는 경우에만 제거한다.
+
+    실측(Flower of the Field, 12개 박자-초과 마디 중 11개): 원본 페이지에는
+    없는 선행 쉼표를 Audiveris가 만들어내 마디 박자합이 초과됐다. 그 쉼표를
+    빼면 정확히 마디 길이가 맞아떨어지는 경우만 좁게 제거한다 — 그래야 실제
+    있는 쉼표(빼도 안 맞아떨어짐, test_rest_represented_as_silent_beat가
+    회귀를 막음)는 건드리지 않는다.
+    """
+    if not events or not events[0].is_rest:
+        return events
+    total = sum(e.ql for e in events)
+    if abs(total - expected_ql) < 1e-6:
+        return events
+    first_ql = events[0].ql
+    if abs((total - first_ql) - expected_ql) < 1e-6:
+        logger.warning(
+            "마디 박자 초과(%.3f > %.3f) — 유령 선행 쉼표(%.3f박) 제거",
+            total, expected_ql, first_ql,
+        )
+        return events[1:]
+    return events
+
+
 def _collect_notes(score) -> List[MeasureData]:
     """첫 번째 파트에서 마디 단위 (박자, 조표, 보이스별 음표/쉼표) 목록을 추출한다.
 
@@ -182,8 +206,11 @@ def _collect_notes(score) -> List[MeasureData]:
         if m.keySignature is not None:
             key_fifths = m.keySignature.sharps
 
+        expected_ql = numerator * 4.0 / denominator
         voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
-        voices_events = [_extract_events(vs) for vs in voice_streams]
+        voices_events = [
+            _drop_phantom_leading_rest(_extract_events(vs), expected_ql) for vs in voice_streams
+        ]
 
         result.append(MeasureData(numerator, denominator, key_fifths, voices_events))
 
