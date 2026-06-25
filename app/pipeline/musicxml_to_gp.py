@@ -8,6 +8,9 @@ MusicXML → Guitar Pro 5 변환기 (PyGuitarPro 기반)
   유효한 현이 없으면(MIDI가 범위 밖) 해당 음표를 건너뛴다.
 - 마디 그룹화: MusicXML의 실제 마디 경계를 그대로 따른다. 박자/조표가 그
   마디에 명시돼 있지 않으면 이전 마디 값을 이어받는다(carry-forward).
+- 다성(보이스): 한 마디에 <backup>으로 만든 보이스가 여러 개면 GP5가 지원
+  하는 최대 2개까지 그대로 둔다(3개 이상은 버림). 탭힌트는 voices[0](주
+  멜로디)에만 적용한다.
 - 이음줄(tie): 이어지는 두 번째 이후 음은 길이를 합치지 않고(GP5는 마디당
   박자 총합이 고정이라 합치면 깨짐) NoteType.tie로만 표시한다.
 - 점음표: quarterLength가 점음표 값(1.5×기본값)이면 isDotted=True로 설정한다.
@@ -91,12 +94,16 @@ class NoteEvent:
 
 @dataclass
 class MeasureData:
-    """한 마디의 박자/조표/음표 목록."""
+    """한 마디의 박자/조표와 보이스별 음표 목록.
+
+    voices[0]은 주 멜로디, voices[1](있으면)은 동시에 울리는 두 번째 성부다.
+    GP5 Measure가 보이스를 최대 2개까지만 지원하므로 그 이상은 버린다.
+    """
 
     numerator: int
     denominator: int
     key_fifths: int
-    events: List[NoteEvent] = field(default_factory=list)
+    voices: List[List[NoteEvent]] = field(default_factory=lambda: [[]])
 
 
 def _midi_to_string_fret(
@@ -133,18 +140,34 @@ def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
     return _QL_TO_GPV[nearest], False
 
 
+def _extract_events(stream_like) -> List[NoteEvent]:
+    """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다."""
+    events: List[NoteEvent] = []
+    for n in stream_like.notesAndRests:
+        ql = float(n.duration.quarterLength)
+        if isinstance(n, m21note.Rest):
+            events.append(NoteEvent(midi=None, ql=ql, is_rest=True))
+            continue
+        tied = n.tie is not None and n.tie.type in ("continue", "stop")
+        if isinstance(n, m21chord.Chord):
+            midi = max(p.midi for p in n.pitches)
+        else:
+            midi = n.pitch.midi
+        midi += _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
+        events.append(NoteEvent(midi, ql, tied))
+    return events
+
+
 def _collect_notes(score) -> List[MeasureData]:
-    """첫 번째 파트에서 마디 단위 (박자, 조표, 음표/쉼표) 목록을 추출한다.
+    """첫 번째 파트에서 마디 단위 (박자, 조표, 보이스별 음표/쉼표) 목록을 추출한다.
 
     박자/조표는 명시된 마디가 없으면 이전 마디 값을 이어받는다(carry-forward).
     Chord는 최고음(최대 MIDI) 하나만 사용한다.
     이음줄로 이어지는(continue/stop) 음은 tied=True로 표시한다.
     쉼표도 길이가 있는 이벤트로 포함한다(건너뛰면 그 뒤 음표들이 마디 박자
     총합을 못 채워 GP5가 깨진다).
-    한 마디에 보이스가 여러 개면(예: <backup>으로 만든 2성) 첫 번째 보이스
-    (주 멜로디)만 쓰고 나머지는 버린다 — 코드에서 최고음만 쓰는 것과 같은
-    MVP 단순화 원칙. 전부 펴서 합치면 마디당 박자 총합이 보이스 수만큼
-    배가 되어 GP5가 깨진다.
+    한 마디에 보이스가 여러 개면(예: <backup>으로 만든 2성) GP5가 지원하는
+    최대 2개까지만 voices에 담는다(3개 이상이면 나머지는 버림).
     """
     part = score.parts[0]
     measures = list(part.getElementsByClass(m21stream.Measure))
@@ -159,23 +182,10 @@ def _collect_notes(score) -> List[MeasureData]:
         if m.keySignature is not None:
             key_fifths = m.keySignature.sharps
 
-        source = m.voices[0] if m.hasVoices() else m
+        voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
+        voices_events = [_extract_events(vs) for vs in voice_streams]
 
-        events: List[NoteEvent] = []
-        for n in source.notesAndRests:
-            ql = float(n.duration.quarterLength)
-            if isinstance(n, m21note.Rest):
-                events.append(NoteEvent(midi=None, ql=ql, is_rest=True))
-                continue
-            tied = n.tie is not None and n.tie.type in ("continue", "stop")
-            if isinstance(n, m21chord.Chord):
-                midi = max(p.midi for p in n.pitches)
-            else:
-                midi = n.pitch.midi
-            midi += _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
-            events.append(NoteEvent(midi, ql, tied))
-
-        result.append(MeasureData(numerator, denominator, key_fifths, events))
+        result.append(MeasureData(numerator, denominator, key_fifths, voices_events))
 
     return result
 
@@ -186,10 +196,13 @@ def _build_song(
 ) -> guitarpro.Song:
     """마디 목록으로 GP Song 객체를 생성한다.
 
-    tab_hints가 전체 음표 개수(쉼표 제외)와 같으면 각 음표에 명시적 (현,프렛)을
-    쓴다. 길이가 다르면 tab_hints를 무시하고 기존 휴리스틱(최저프렛)을 쓴다.
+    tab_hints는 주 멜로디(voices[0])의 음표 개수(쉼표 제외)와 같을 때만, 그
+    보이스에 명시적 (현,프렛)을 쓴다. 두 번째 보이스는 항상 휴리스틱을 쓴다
+    (탭보표는 한 줄짜리 멜로디만 읽으므로 다성에는 대응 불가).
     """
-    total_notes = sum(1 for m in measures_data for ev in m.events if not ev.is_rest)
+    total_notes = sum(
+        1 for m in measures_data for ev in m.voices[0] if not ev.is_rest
+    )
     if tab_hints is not None and len(tab_hints) != total_notes:
         tab_hints = None
 
@@ -219,10 +232,9 @@ def _build_song(
         fifths = max(-8, min(8, md.key_fifths))
         mh.keySignature = _FIFTHS_TO_KEYSIG[fifths]
 
-    def _fill_measure(measure: gpm.Measure, md: MeasureData) -> None:
-        voice = measure.voices[0]
+    def _fill_voice(voice: gpm.Voice, events: List[NoteEvent], use_hints: bool) -> None:
         beats: List[Beat] = []
-        for ev in md.events:
+        for ev in events:
             gp_val, is_dotted = _ql_to_gp_duration(ev.ql)
 
             if ev.is_rest:
@@ -234,7 +246,7 @@ def _build_song(
                 beats.append(beat)
                 continue
 
-            hint = _next_hint()
+            hint = _next_hint() if use_hints else None
             if hint is not None:
                 snum, fret = hint
             else:
@@ -257,6 +269,10 @@ def _build_song(
             beat.notes = [gnote]
             beats.append(beat)
         voice.beats = beats
+
+    def _fill_measure(measure: gpm.Measure, md: MeasureData) -> None:
+        for vi, events in enumerate(md.voices):
+            _fill_voice(measure.voices[vi], events, use_hints=(vi == 0))
 
     first_mh = song.measureHeaders[0]
     first_measure = track.measures[0]
@@ -320,7 +336,9 @@ def musicxml_to_gp5(
     except Exception as e:
         raise GpConvertError("음표 추출 실패") from e
 
-    if not any(not ev.is_rest for m in measures_data for ev in m.events):
+    if not any(
+        not ev.is_rest for m in measures_data for voice_events in m.voices for ev in voice_events
+    ):
         raise GpConvertError("변환할 음표 없음")
 
     try:

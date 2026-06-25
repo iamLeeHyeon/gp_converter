@@ -191,7 +191,7 @@ def test_out_of_range_note_is_logged_and_skipped(caplog):
             numerator=4,
             denominator=4,
             key_fifths=0,
-            events=[NoteEvent(midi=30, ql=1.0, tied=False), NoteEvent(midi=60, ql=1.0, tied=False)],
+            voices=[[NoteEvent(midi=30, ql=1.0, tied=False), NoteEvent(midi=60, ql=1.0, tied=False)]],
         )
     ]
 
@@ -519,12 +519,14 @@ _MULTI_VOICE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 </score-partwise>"""
 
 
-def test_second_voice_ignored_when_measure_has_multiple_voices(tmp_path):
-    """여러 보이스(다성)가 있으면 첫 번째 보이스(주 멜로디)만 쓰고 나머지는 버린다.
+def test_second_voice_preserved_as_separate_gp5_voice(tmp_path):
+    """여러 보이스(다성)면 버리지 말고 GP5의 두 번째 보이스에 그대로 넣는다.
 
-    버그였던 동작: recurse()가 보이스 구분 없이 전부 한 줄로 펴버려서, 마디
-    하나에 voice1 박자 총합 + voice2 박자 총합이 그대로 더해져(이 예시면
-    4.0+4.0=8.0) 마디당 박자 한도를 두 배로 넘기며 GP5가 깨졌다.
+    이전 버그였던 동작: recurse()가 보이스 구분 없이 한 줄로 펴버려서 마디당
+    박자 총합이 배가 됨 → 보이스1만 쓰고 보이스2는 버리는 것으로 1차 수정.
+    근데 실제 곡에서 보이스2가 동시에 울리는 실제 음(쉼표 옆 지속음)이라 그냥
+    버리면 음이 통째로 빠진다. GP5 Measure가 보이스를 2개까지 지원하므로
+    보이스2도 그대로 살려서 둘째 보이스에 넣어야 한다.
     """
     xml_path = tmp_path / "multivoice.musicxml"
     xml_path.write_text(_MULTI_VOICE_XML, encoding="utf-8")
@@ -535,17 +537,19 @@ def test_second_voice_ignored_when_measure_has_multiple_voices(tmp_path):
     song = guitarpro.parse(out)
     track = song.tracks[0]
     string_val = {s.number: s.value for s in track.strings}
+    measure = track.measures[0]
 
-    actual_midi = [
-        string_val[note.string] + note.value
-        for measure in track.measures
-        for voice in measure.voices
-        for beat in voice.beats
-        for note in beat.notes
+    voice0_midi = [
+        string_val[n.string] + n.value for b in measure.voices[0].beats for n in b.notes
+    ]
+    voice1_midi = [
+        string_val[n.string] + n.value for b in measure.voices[1].beats for n in b.notes
     ]
 
-    # voice1(C,D,E,F → -1옥타브 후 48,50,52,53)만 남고 voice2(G)는 버려져야 함
-    assert actual_midi == [48, 50, 52, 53], f"voice2가 섞여 들어옴: {actual_midi}"
+    # voice1(C,D,E,F → -1옥타브 후 48,50,52,53)
+    assert voice0_midi == [48, 50, 52, 53]
+    # voice2(G → -1옥타브 후 55)도 버려지지 않고 살아있어야 함
+    assert voice1_midi == [55], f"voice2(동시에 울리는 음)가 빠짐: {voice1_midi}"
 
 
 _DOTTED_DURATIONS_XML = """<?xml version="1.0" encoding="UTF-8"?>
