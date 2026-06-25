@@ -14,7 +14,11 @@ MusicXML → Guitar Pro 5 변환기 (PyGuitarPro 기반)
   하는 최대 2개까지 그대로 둔다(3개 이상은 버림). 탭힌트는 voices[0](주
   멜로디)에만 적용한다.
 - 이음줄(tie): 이어지는 두 번째 이후 음은 길이를 합치지 않고(GP5는 마디당
-  박자 총합이 고정이라 합치면 깨짐) NoteType.tie로만 표시한다.
+  박자 총합이 고정이라 합치면 깨짐) NoteType.tie로만 표시한다. 화음은 음별로
+  따로 추적한다(NoteEvent.tied가 pitches와 같은 길이의 리스트) — music21
+  Chord.tie는 구성음 중 하나의 tie만 대표로 골라 화음 전체에 적용해서, 화음
+  안에서 음마다 tie 상태가 다른 실제 케이스(한 음은 이어지고 한 음은 새로
+  침)를 못 구분하기 때문이다.
 - 점음표: quarterLength가 점음표 값(1.5×기본값)이면 isDotted=True로 설정한다.
 - 매핑 불가 박자: 가장 가까운 기본 박자값으로 내림한다(문서화).
 
@@ -87,11 +91,17 @@ class NoteEvent:
 
     pitches는 MIDI 내림차순(높은음 먼저) 리스트다. 단일음은 길이 1,
     화음은 길이 2 이상, 쉼표(is_rest=True)는 빈 리스트다.
+
+    tied는 pitches와 같은 길이로, 음마다 따로 이음줄 연속 여부를 담는다
+    (인덱스 i가 pitches[i]에 대응). music21 Chord의 .tie는 구성음 중 하나의
+    tie만 대표로 골라 화음 전체에 적용하는데, 실제 곡에는 화음 안에서 음마다
+    tie 상태가 다른 경우(한 음은 이어지고 한 음은 새로 침)가 흔히 있어
+    화음 전체에 하나의 값을 쓰면 안 된다.
     """
 
     pitches: List[int]
     ql: float
-    tied: bool = False  # True면 직전 음에서 이어지는 연속음(NoteType.tie)
+    tied: List[bool] = field(default_factory=list)  # True면 그 음은 이어지는 연속음(NoteType.tie)
     is_rest: bool = False
 
 
@@ -170,6 +180,11 @@ def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
     return _QL_TO_GPV[nearest], False
 
 
+def _is_tied(tie) -> bool:
+    """music21 Tie 객체가 '이어지는 연속음'(continue/stop)인지 판정한다."""
+    return tie is not None and tie.type in ("continue", "stop")
+
+
 def _extract_events(stream_like) -> List[NoteEvent]:
     """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다."""
     events: List[NoteEvent] = []
@@ -178,11 +193,14 @@ def _extract_events(stream_like) -> List[NoteEvent]:
         if isinstance(n, m21note.Rest):
             events.append(NoteEvent(pitches=[], ql=ql, is_rest=True))
             continue
-        tied = n.tie is not None and n.tie.type in ("continue", "stop")
+
         if isinstance(n, m21chord.Chord):
-            midis = sorted((p.midi for p in n.pitches), reverse=True)
+            chord_notes = sorted(n.notes, key=lambda cn: cn.pitch.midi, reverse=True)
+            midis = [cn.pitch.midi for cn in chord_notes]
+            tied = [_is_tied(cn.tie) for cn in chord_notes]
         else:
             midis = [n.pitch.midi]
+            tied = [_is_tied(n.tie)]
         pitches = [m + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET for m in midis]
         events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied))
     return events
@@ -218,7 +236,8 @@ def _collect_notes(score) -> List[MeasureData]:
     박자/조표는 명시된 마디가 없으면 이전 마디 값을 이어받는다(carry-forward).
     Chord는 모든 구성음을 MIDI 내림차순으로 pitches에 담는다(현 배정은
     _build_song의 _assign_chord_strings에서 처리).
-    이음줄로 이어지는(continue/stop) 음은 tied=True로 표시한다.
+    이음줄로 이어지는(continue/stop) 음은 음별로 tied=True로 표시한다(화음은
+    구성음마다 따로 판정 — _is_tied/_extract_events 참고).
     쉼표도 길이가 있는 이벤트로 포함한다(건너뛰면 그 뒤 음표들이 마디 박자
     총합을 못 채워 GP5가 깨진다).
     한 마디에 보이스가 여러 개면(예: <backup>으로 만든 2성) GP5가 지원하는
@@ -315,7 +334,7 @@ def _build_song(
                 beat.duration.isDotted = is_dotted
 
                 gnotes = []
-                for placement in placements:
+                for placement, note_tied in zip(placements, ev.tied):
                     if placement is None:
                         logger.warning("화음 음 일부가 어떤 현으로도 표현할 수 없어 건너뜀")
                         continue
@@ -323,7 +342,7 @@ def _build_song(
                     gnote = Note(beat=beat)
                     gnote.value = fret
                     gnote.string = snum
-                    gnote.type = NoteType.tie if ev.tied else NoteType.normal
+                    gnote.type = NoteType.tie if note_tied else NoteType.normal
                     gnotes.append(gnote)
                 if not gnotes:
                     # 화음 전체 음이 범위 밖이라 하나도 못 배정되면, 빈
@@ -352,7 +371,7 @@ def _build_song(
             gnote = Note(beat=beat)
             gnote.value = fret
             gnote.string = snum
-            gnote.type = NoteType.tie if ev.tied else NoteType.normal
+            gnote.type = NoteType.tie if ev.tied[0] else NoteType.normal
             beat.notes = [gnote]
             beats.append(beat)
         voice.beats = beats

@@ -192,7 +192,7 @@ def test_out_of_range_note_is_logged_and_skipped(caplog):
             numerator=4,
             denominator=4,
             key_fifths=0,
-            voices=[[NoteEvent(pitches=[30], ql=1.0, tied=False), NoteEvent(pitches=[60], ql=1.0, tied=False)]],
+            voices=[[NoteEvent(pitches=[30], ql=1.0, tied=[False]), NoteEvent(pitches=[60], ql=1.0, tied=[False])]],
         )
     ]
 
@@ -846,3 +846,74 @@ def test_chord_all_notes_unplaceable_becomes_rest_beat(tmp_path):
     assert len(beats) == 1, f"화음은 비트 1개여야 하는데 {len(beats)}개"
     assert beats[0].status == guitarpro.BeatStatus.rest
     assert len(beats[0].notes) == 0
+
+
+_CHORD_MIXED_TIE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>2</duration><type>half</type>
+        <tie type="start"/>
+        <notations><tied type="start"/></notations>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>B</step><octave>5</octave></pitch>
+        <duration>2</duration><type>half</type>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>2</duration><type>half</type>
+        <tie type="stop"/>
+        <notations><tied type="stop"/></notations>
+      </note>
+      <note>
+        <chord/>
+        <pitch><step>B</step><octave>5</octave></pitch>
+        <duration>2</duration><type>half</type>
+        <tie type="start"/>
+        <notations><tied type="start"/></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_chord_tie_tracked_per_pitch_not_shared_across_whole_chord(tmp_path):
+    """화음 안에서 음마다 이음줄 상태가 다르면, 음별로 정확히 따로 표시돼야 한다.
+
+    2번째 비트 화음(G5+B5): G5는 1번째 비트에서 이어지는 음(tie stop, 안 쳐야
+    함)이고 B5는 거기서 새로 시작하는 음(tie start, 처음 치는 음)이다.
+    music21의 Chord.tie는 구성음 중 하나의 tie만 대표로 골라 화음 전체에
+    적용하므로(실측: Flower of the Field 36마디), 이를 그대로 따르면 새로
+    쳐야 할 B5까지 이어지는 음으로 잘못 표시된다. 음별로 따로 추적해야 한다.
+    """
+    xml_path = tmp_path / "chord_mixed_tie.musicxml"
+    xml_path.write_text(_CHORD_MIXED_TIE_XML, encoding="utf-8")
+    out = str(tmp_path / "chord_mixed_tie.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    string_val = {s.number: s.value for s in track.strings}
+    beats = [beat for voice in track.measures[0].voices for beat in voice.beats]
+
+    assert len(beats) == 2, f"화음 2개(반음표씩)여야 하는데 {len(beats)}개"
+    second_beat = beats[1]
+    assert len(second_beat.notes) == 2
+
+    by_midi = {string_val[n.string] + n.value: n for n in second_beat.notes}
+    # 적힌 G5(79),B5(83) -1옥타브 = 67,71
+    assert set(by_midi.keys()) == {67, 71}
+    assert by_midi[67].type == guitarpro.NoteType.tie, "G5는 이어지는 음(tie stop)이어야 함"
+    assert by_midi[71].type == guitarpro.NoteType.normal, "B5는 새로 치는 음(tie start)이어야 함"
