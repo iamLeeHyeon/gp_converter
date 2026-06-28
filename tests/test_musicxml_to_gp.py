@@ -1008,3 +1008,13 @@ def test_tied_chord_note_keeps_same_string_across_beats(tmp_path):
     # 적힌 B5(83) -1옥타브 = 71, G5와 다른 줄이어야 함
     b5_string_beat3 = _string_of(beats[2], 71)
     assert b5_string_beat3 != g5_string_beat3
+
+
+def test_note_event_new_fields_have_correct_defaults():
+    """NoteEvent의 새 필드가 올바른 기본값을 가져야 한다."""
+    ev = NoteEvent(pitches=[60], ql=1.0, tied=[False])
+    assert ev.tuplet is None
+    assert ev.velocity is None
+    assert ev.hammer is False
+    assert ev.articulations == []
+    assert ev.grace is None

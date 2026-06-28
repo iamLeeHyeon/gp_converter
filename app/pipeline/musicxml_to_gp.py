@@ -100,12 +100,23 @@ class NoteEvent:
     tie만 대표로 골라 화음 전체에 적용하는데, 실제 곡에는 화음 안에서 음마다
     tie 상태가 다른 경우(한 음은 이어지고 한 음은 새로 침)가 흔히 있어
     화음 전체에 하나의 값을 쓰면 안 된다.
+
+    tuplet: (enters, times) 잇단음 비율. 예: (3,2)=셋잇단. None이면 일반 박자.
+    velocity: GP5 Note.velocity (15~127). None이면 기본값(forte=95).
+    hammer: 슬러 안 후속음이면 True → NoteEffect.hammer=True.
+    articulations: ['staccato'|'accent'|'strong-accent'|'tenuto'] 리스트.
+    grace: (grace_MIDI, transition) 꾸밈음. transition='hammer'|'slide'.
     """
 
     pitches: List[int]
     ql: float
     tied: List[bool] = field(default_factory=list)  # True면 그 음은 이어지는 연속음(NoteType.tie)
     is_rest: bool = False
+    tuplet: Optional[Tuple[int, int]] = None
+    velocity: Optional[int] = None
+    hammer: bool = False
+    articulations: List[str] = field(default_factory=list)
+    grace: Optional[Tuple[int, str]] = None
 
 
 @dataclass
