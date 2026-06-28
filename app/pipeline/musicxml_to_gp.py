@@ -284,20 +284,27 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     # 버려졌다. root_stream(part 전체)을 flatten()한 전역 리스트를 쓰면
     # 음표 객체 동일성(identity)이 보존되므로 마디를 넘어도 정확히
     # 인덱스를 찾을 수 있다.
+    local_note_ids = {id(n) for n in stream_like.notesAndRests}
     flat_notes = list(root_stream.flatten().notesAndRests) if root_stream else []
-    for slur in root_stream.recurse().getElementsByClass(m21spanner.Slur) if root_stream else []:
+    for slur in (root_stream.recurse().getElementsByClass(m21spanner.Slur) if root_stream else []):
         spanned = slur.getSpannedElements()
-        if len(spanned) >= 2:
-            first_note = spanned[0]
-            last_note = spanned[-1]
-            try:
-                start_idx = flat_notes.index(first_note)
-                end_idx = flat_notes.index(last_note)
-                for note in flat_notes[start_idx + 1 : end_idx + 1]:
+        if len(spanned) < 2:
+            continue
+        first_note = spanned[0]
+        last_note = spanned[-1]
+        # 슬러의 endpoint 중 하나라도 현재 voice에 속할 때만 처리한다.
+        # 그렇지 않으면 다른 voice의 음표가 슬러 구간에 끼어있어도
+        # 현재 voice와 무관한 슬러이므로 건너뛴다.
+        if id(first_note) not in local_note_ids and id(last_note) not in local_note_ids:
+            continue
+        try:
+            start_idx = flat_notes.index(first_note)
+            end_idx = flat_notes.index(last_note)
+            for note in flat_notes[start_idx + 1 : end_idx + 1]:
+                if id(note) in local_note_ids:
                     slur_continuation_ids.add(id(note))
-            except (ValueError, IndexError):
-                # 음표 찾기 실패 — 무시
-                pass
+        except (ValueError, IndexError):
+            logger.warning("슬러 음표 탐색 실패 — 슬러 무시")
     for n in stream_like.notesAndRests:
         ql = float(n.duration.quarterLength)
         note_offset = float(n.offset)
