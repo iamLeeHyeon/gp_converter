@@ -53,7 +53,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art
+from music21 import converter, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
 
 
 logger = logging.getLogger(__name__)
@@ -249,7 +249,6 @@ def _assign_with_tie_carryover(
 
 def _build_velocity_map(stream_like) -> Dict[float, int]:
     """스트림에서 Dynamic 객체를 찾아 offset → velocity 딕셔너리를 만든다."""
-    import music21.dynamics as m21dyn
     result: Dict[float, int] = {}
     for el in stream_like.recurse().getElementsByClass(m21dyn.Dynamic):
         v = _DYNAMIC_VELOCITY.get(el.value)
@@ -292,8 +291,12 @@ def _is_tied(tie) -> bool:
     return tie is not None and tie.type in ("continue", "stop")
 
 
-def _extract_events(stream_like) -> List[NoteEvent]:
-    """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다."""
+def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List[NoteEvent]:
+    """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다.
+
+    initial_velocity: 이전 마디에서 이어지는 velocity 초기값(없으면 None=
+    기본값 사용). 마디 간 carry-forward는 _collect_notes에서 처리한다.
+    """
     events: List[NoteEvent] = []
     vel_map = _build_velocity_map(stream_like)
     sorted_vel_offsets = sorted(vel_map)
@@ -325,23 +328,24 @@ def _extract_events(stream_like) -> List[NoteEvent]:
             continue
         first_note = spanned[0]
         last_note = spanned[-1]
-        # 슬러의 endpoint 중 하나라도 현재 voice에 속할 때만 처리한다.
-        # 그렇지 않으면 다른 voice의 음표가 슬러 구간에 끼어있어도
-        # 현재 voice와 무관한 슬러이므로 건너뛴다.
-        if id(first_note) not in local_note_ids and id(last_note) not in local_note_ids:
-            continue
         try:
             start_idx = flat_notes.index(first_note)
             end_idx = flat_notes.index(last_note)
-            for note in flat_notes[start_idx + 1 : end_idx + 1]:
-                if id(note) in local_note_ids:
-                    slur_continuation_ids.add(id(note))
-        except (ValueError, IndexError):
+        except ValueError:
             logger.warning("슬러 음표 탐색 실패 — 슬러 무시")
+            continue
+        # 슬러 endpoint 또는 중간음이 현재 voice에 속할 때만 처리한다.
+        # 3+ 마디 슬러에서 중간 마디 음표도 잡기 위해 슬라이스 전체를 확인한다.
+        slice_ids = {id(n) for n in flat_notes[start_idx : end_idx + 1]}
+        if not slice_ids & local_note_ids:
+            continue
+        for note in flat_notes[start_idx + 1 : end_idx + 1]:
+            if id(note) in local_note_ids:
+                slur_continuation_ids.add(id(note))
     for n in stream_like.notesAndRests:
         ql = float(n.duration.quarterLength)
         note_offset = float(n.offset)
-        current_velocity: Optional[int] = None
+        current_velocity: Optional[int] = initial_velocity
         for off in sorted_vel_offsets:
             if off <= note_offset:
                 current_velocity = vel_map[off]
@@ -360,6 +364,8 @@ def _extract_events(stream_like) -> List[NoteEvent]:
                 e, t = tp.numberNotesActual, tp.numberNotesNormal
                 if (e, t) in _SUPPORTED_TUPLETS:
                     rest_tuplet = (e, t)
+                else:
+                    logger.warning("미지원 잇단음 %d:%d(쉼표) — 무시", e, t)
             pending_grace = None  # 쉼표를 만나면 꾸밈음 버퍼 초기화
             events.append(NoteEvent(pitches=[], ql=ql, is_rest=True, tuplet=rest_tuplet, velocity=current_velocity))
             continue
@@ -447,6 +453,7 @@ def _collect_notes(score) -> List[MeasureData]:
 
     result: List[MeasureData] = []
     numerator, denominator, key_fifths = 4, 4, 0
+    running_velocity: Optional[int] = None
 
     for m in measures:
         if m.timeSignature is not None:
@@ -458,8 +465,13 @@ def _collect_notes(score) -> List[MeasureData]:
         expected_ql = numerator * 4.0 / denominator
         voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
         voices_events = [
-            _drop_phantom_leading_rest(_extract_events(vs), expected_ql) for vs in voice_streams
+            _drop_phantom_leading_rest(_extract_events(vs, initial_velocity=running_velocity), expected_ql)
+            for vs in voice_streams
         ]
+        # 이 마디 voices[0]에서 마지막으로 설정된 velocity를 다음 마디로 이어받는다.
+        for ev in voices_events[0]:
+            if ev.velocity is not None:
+                running_velocity = ev.velocity
 
         result.append(MeasureData(numerator, denominator, key_fifths, voices_events))
 
