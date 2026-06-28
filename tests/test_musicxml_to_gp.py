@@ -1126,3 +1126,49 @@ def test_triplet_eighth_notes_have_tuplet_duration(tmp_path):
     for i, beat in enumerate(beats):
         assert beat.duration.tuplet.enters == 3, f"beat {i}: enters != 3"
         assert beat.duration.tuplet.times == 2, f"beat {i}: times != 2"
+
+
+_SLUR_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><slur type="start" number="1"/></notations>
+      </note>
+      <note>
+        <pitch><step>A</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+      <note>
+        <pitch><step>B</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><slur type="stop" number="1"/></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_slur_marks_continuation_notes_as_hammer_on(tmp_path):
+    """슬러 안의 첫 번째 음은 normal, 이후 음들은 hammer-on이어야 한다."""
+    xml_path = tmp_path / "slur.musicxml"
+    xml_path.write_text(_SLUR_XML, encoding="utf-8")
+    out = str(tmp_path / "slur.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 3
+    assert beats[0].notes[0].effect.hammer is False, "슬러 첫 음은 normal"
+    assert beats[1].notes[0].effect.hammer is True, "슬러 두 번째 음은 hammer"
+    assert beats[2].notes[0].effect.hammer is True, "슬러 세 번째 음은 hammer"

@@ -41,7 +41,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, note as m21note, chord as m21chord, stream as m21stream
+from music21 import converter, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner
 
 
 logger = logging.getLogger(__name__)
@@ -265,6 +265,29 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     events: List[NoteEvent] = []
     vel_map = _build_velocity_map(stream_like)
     sorted_vel_offsets = sorted(vel_map)
+    slur_continuation_ids: set = set()
+    all_notes = list(stream_like.notesAndRests)
+
+    # 슬러 찾기: stream_like의 부모(part)에서 모든 슬러 검색
+    # (measure 자체는 슬러를 갖지 않고, 상위 part가 보유)
+    root_stream = stream_like.activeSite
+    while root_stream is not None and hasattr(root_stream, 'activeSite') and root_stream.activeSite is not None:
+        root_stream = root_stream.activeSite
+
+    # root_stream이 part라면 슬러 검색
+    for slur in root_stream.recurse().getElementsByClass(m21spanner.Slur) if root_stream else []:
+        spanned = slur.getSpannedElements()
+        if len(spanned) >= 2:
+            first_note = spanned[0]
+            last_note = spanned[-1]
+            try:
+                start_idx = all_notes.index(first_note)
+                end_idx = all_notes.index(last_note)
+                for note in all_notes[start_idx + 1 : end_idx + 1]:
+                    slur_continuation_ids.add(id(note))
+            except (ValueError, IndexError):
+                # 음표 찾기 실패 — 무시
+                pass
     for n in stream_like.notesAndRests:
         ql = float(n.duration.quarterLength)
         note_offset = float(n.offset)
@@ -304,7 +327,8 @@ def _extract_events(stream_like) -> List[NoteEvent]:
             else:
                 logger.warning("미지원 잇단음 %d:%d — 무시", enters, times)
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity))
+        hammer = id(n) in slur_continuation_ids
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, hammer=hammer))
     return events
 
 
@@ -466,6 +490,8 @@ def _build_song(
                     gnote.type = NoteType.tie if note_tied else NoteType.normal
                     if ev.velocity is not None:
                         gnote.velocity = ev.velocity
+                    if ev.hammer:
+                        gnote.effect.hammer = True
                     gnotes.append(gnote)
                     new_prev[midi] = snum
                 prev_pitch_to_string = new_prev
@@ -505,6 +531,8 @@ def _build_song(
             gnote.type = NoteType.tie if ev.tied[0] else NoteType.normal
             if ev.velocity is not None:
                 gnote.velocity = ev.velocity
+            if ev.hammer:
+                gnote.effect.hammer = True
             beat.notes = [gnote]
             beats.append(beat)
             prev_pitch_to_string = {ev.pitches[0]: snum}
