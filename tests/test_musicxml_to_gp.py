@@ -1284,3 +1284,66 @@ def test_articulations_applied_to_note_effect(tmp_path):
     assert beats[1].notes[0].effect.accentuatedNote is True, "D5: accent"
     assert beats[2].notes[0].effect.heavyAccentuatedNote is True, "E5: strong-accent"
     assert beats[3].notes[0].effect.letRing is True, "F5: tenuto"
+
+
+_GRACE_NOTE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>2</beats><beat-type>2</beat-type></time>
+      </attributes>
+      <!-- 오름 꾸밈음: F5(적힌) → G5(적힌). 소리는 F4→G4(각각 -1옥타브). F4<G4이므로 hammer -->
+      <note>
+        <grace slash="yes"/>
+        <pitch><step>F</step><octave>5</octave></pitch>
+        <type>eighth</type>
+        <stem>up</stem>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>half</type>
+      </note>
+      <!-- 내림 꾸밈음: A5(적힌) → G5(적힌). 소리는 A4→G4. A4>G4이므로 slide -->
+      <note>
+        <grace slash="yes"/>
+        <pitch><step>A</step><octave>5</octave></pitch>
+        <type>eighth</type>
+        <stem>up</stem>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>half</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_grace_notes_set_hammer_or_slide_transition(tmp_path):
+    """오름 꾸밈음은 hammer, 내림 꾸밈음은 slide transition이어야 한다.
+
+    적힌 음에 -1옥타브 보정: F5→F4(MIDI65), G5→G4(MIDI67), A5→A4(MIDI69).
+    F4(65) < G4(67) → hammer. A4(69) > G4(67) → slide.
+    """
+    xml_path = tmp_path / "grace.musicxml"
+    xml_path.write_text(_GRACE_NOTE_XML, encoding="utf-8")
+    out = str(tmp_path / "grace.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 2
+
+    grace0 = beats[0].notes[0].effect.grace
+    assert grace0 is not None, "첫 번째 음(G4)에 꾸밈음이 있어야 함"
+    assert grace0.transition == guitarpro.GraceEffectTransition.hammer, "오름→hammer"
+
+    grace1 = beats[1].notes[0].effect.grace
+    assert grace1 is not None, "두 번째 음(G4)에 꾸밈음이 있어야 함"
+    assert grace1.transition == guitarpro.GraceEffectTransition.slide, "내림→slide"

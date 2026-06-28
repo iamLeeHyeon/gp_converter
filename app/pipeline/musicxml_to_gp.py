@@ -286,6 +286,7 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     vel_map = _build_velocity_map(stream_like)
     sorted_vel_offsets = sorted(vel_map)
     slur_continuation_ids: set = set()
+    pending_grace: Optional[Tuple[int, str]] = None
 
     # 슬러 찾기: stream_like의 부모(part)에서 모든 슬러 검색
     # (measure 자체는 슬러를 갖지 않고, 상위 part가 보유)
@@ -334,6 +335,12 @@ def _extract_events(stream_like) -> List[NoteEvent]:
                 current_velocity = vel_map[off]
             else:
                 break
+        # 그레이스노트는 NoteEvent로 만들지 않고, 다음 일반음에 첨부한다.
+        if isinstance(n, m21note.Note) and n.duration.isGrace:
+            grace_midi = n.pitch.midi + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
+            pending_grace = (grace_midi, 'grace_pending')
+            continue
+
         if isinstance(n, m21note.Rest):
             rest_tuplet = None
             if n.duration.tuplets:
@@ -341,6 +348,7 @@ def _extract_events(stream_like) -> List[NoteEvent]:
                 e, t = tp.numberNotesActual, tp.numberNotesNormal
                 if (e, t) in _SUPPORTED_TUPLETS:
                     rest_tuplet = (e, t)
+            pending_grace = None  # 쉼표를 만나면 꾸밈음 버퍼 초기화
             events.append(NoteEvent(pitches=[], ql=ql, is_rest=True, tuplet=rest_tuplet, velocity=current_velocity))
             continue
 
@@ -371,7 +379,17 @@ def _extract_events(stream_like) -> List[NoteEvent]:
                 key = _ARTICULATION_MAP.get(type(a))
                 if key:
                     arts.append(key)
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, hammer=hammer, articulations=arts))
+
+        # 직전에 버퍼링된 그레이스노트가 있으면 transition 결정 후 첨부
+        grace: Optional[Tuple[int, str]] = None
+        if pending_grace is not None:
+            grace_midi, _ = pending_grace
+            main_midi = pitches[0] if pitches else 0
+            transition = 'hammer' if grace_midi < main_midi else 'slide'
+            grace = (grace_midi, transition)
+            pending_grace = None
+
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, hammer=hammer, articulations=arts, grace=grace))
     return events
 
 
@@ -578,6 +596,19 @@ def _build_song(
             if ev.hammer:
                 gnote.effect.hammer = True
             _apply_articulations(gnote, ev.articulations)
+            if ev.grace is not None and len(ev.pitches) == 1:
+                grace_midi, transition_name = ev.grace
+                sf_grace = _midi_to_string_fret(grace_midi, strings)
+                if sf_grace is not None:
+                    _, grace_fret = sf_grace
+                    trans = (
+                        gpm.GraceEffectTransition.hammer
+                        if transition_name == 'hammer'
+                        else gpm.GraceEffectTransition.slide
+                    )
+                    gnote.effect.grace = gpm.GraceEffect(
+                        duration=32, fret=grace_fret, transition=trans
+                    )
             beat.notes = [gnote]
             beats.append(beat)
             prev_pitch_to_string = {ev.pitches[0]: snum}
