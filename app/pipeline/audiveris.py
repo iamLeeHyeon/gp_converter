@@ -1,4 +1,5 @@
 import glob
+import math
 import os
 import subprocess
 
@@ -7,22 +8,40 @@ class AudiverisError(Exception):
     pass
 
 
-# 디폴트 해상도(보통 300dpi)에서는 8분음표 꼬리(플래그)를 별도 노트헤드로
-# 오인식해 화음으로 잘못 읽는 경우가 실측으로 확인됐다(예: 1개 음을
-# 2개짜리 화음+박자 다른 음표로 오인식). 400dpi로 올리면 해당 사례가
-# 정확히 고쳐진다. 단, 다른 페이지에서 인식이 달라질 수도 있어 만능은 아님.
+# 목표 해상도. PDF 페이지가 커서 Audiveris 20M픽셀 한도를 초과하면
+# _safe_dpi()가 자동으로 낮춰준다.
 _PDF_RESOLUTION_DPI = 400
+_AUDIVERIS_MAX_PIXELS = 20_000_000
+
+
+def _safe_dpi(pdf_path: str) -> int:
+    """PDF 최대 페이지 크기 기준으로 Audiveris 픽셀 한도 이내 DPI를 반환한다."""
+    try:
+        from pdfminer.high_level import extract_pages
+        from pdfminer.layout import LTPage
+        max_area = 0.0
+        for page in extract_pages(pdf_path):
+            if isinstance(page, LTPage):
+                area = (page.width / 72) * (page.height / 72)
+                max_area = max(max_area, area)
+        if max_area > 0:
+            max_dpi = int(math.sqrt(_AUDIVERIS_MAX_PIXELS / max_area))
+            return min(_PDF_RESOLUTION_DPI, max_dpi)
+    except Exception:
+        pass
+    return _PDF_RESOLUTION_DPI
 
 
 def pdf_to_musicxml(pdf_path: str, out_dir: str, audiveris_cmd: str, timeout: int) -> str:
     """PDF를 MusicXML(.mxl/.xml)로 변환하고 산출 파일 경로를 반환한다."""
     os.makedirs(out_dir, exist_ok=True)
+    dpi = _safe_dpi(pdf_path)
     cmd = [
         audiveris_cmd,
         "-batch",
         "-export",
         "-constant",
-        f"org.audiveris.omr.image.ImageLoading.pdfResolution={_PDF_RESOLUTION_DPI}",
+        f"org.audiveris.omr.image.ImageLoading.pdfResolution={dpi}",
         "-output",
         out_dir,
         "--",
