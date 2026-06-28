@@ -24,6 +24,18 @@ MusicXML → Guitar Pro 5 변환기 (PyGuitarPro 기반)
   같은 음이 다른 줄로 옮겨가면 엉뚱한 음높이로 깨진다.
 - 점음표: quarterLength가 점음표 값(1.5×기본값)이면 isDotted=True로 설정한다.
 - 매핑 불가 박자: 가장 가까운 기본 박자값으로 내림한다(문서화).
+- 잇단음(tuplet): music21 duration.tuplets에서 추출. GP5 지원 잇단음(3:2,5:4,6:4,
+  7:4,9:8,10:8,11:8,12:8,13:8)이면 beat.duration.tuplet에 Tuplet(enters,times) 적용.
+  base_ql = ql * enters / times 로 base 박자값을 구해 _ql_to_gp_duration에 전달.
+- 다이나믹(dynamics): 스트림에서 music21 Dynamic 객체를 offset 기준 carry-forward
+  적용. Note.velocity에 매핑(ppp=15 ~ fff=127). _build_velocity_map 참고.
+- 슬러(slur): Slur spanner의 첫 번째 음은 일반 발음, 이후 음들은
+  NoteEffect.hammer=True로 표현(GP5에 slur 개념 없음).
+- 아티큘레이션: Staccato→staccato, Accent→accentuatedNote,
+  StrongAccent→heavyAccentuatedNote, Tenuto→letRing.
+- 페르마타: GP5에 직접 대응 없음 → 무시.
+- 그레이스노트: 일반음 앞에 오는 grace note를 GraceEffect(duration=32)로 변환.
+  오름 방향이면 transition=hammer, 내림이면 slide. 화음에는 미적용(GP5 한계).
 
 주의: Beat.status를 BeatStatus.normal로 명시해야 한다. 기본값(empty)으로 두면
 PyGuitarPro가 GP5 작성 시 같은 마디의 비트들을 하나로 합쳐 음표를 전부
