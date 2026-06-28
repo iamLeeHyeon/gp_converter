@@ -27,3 +27,6 @@ jobs/
 *.musicxml
 # 단, 테스트 픽스처(합성 악보)는 추적
 !tests/fixtures/*.musicxml
+.agents/
+.claude/skills/
+skills-lock.json
