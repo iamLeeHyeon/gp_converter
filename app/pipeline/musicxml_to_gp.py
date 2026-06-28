@@ -67,6 +67,12 @@ _SUPPORTED_TUPLETS: frozenset = frozenset([
     (9, 8), (10, 8), (11, 8), (12, 8), (13, 8),
 ])
 
+# MusicXML 다이나믹 기호 → Note.velocity 매핑
+_DYNAMIC_VELOCITY: Dict[str, int] = {
+    'ppp': 15, 'pp': 31, 'p': 47, 'mp': 63,
+    'mf': 79,  'f':  95, 'ff': 111, 'fff': 127,
+}
+
 # 클래식/핑거스타일 기타 표준악보(탭 아님) 표기 관행: 작은 "8" 표기 유무와
 # 무관하게 적힌 음보다 항상 1옥타브 낮게 소리난다. Audiveris는 그려진 대로
 # 정확히 읽으므로, 실제 소리나는 음을 얻으려면 적힌 MIDI에서 12를 빼야 한다.
@@ -222,6 +228,17 @@ def _assign_with_tie_carryover(
     return placements
 
 
+def _build_velocity_map(stream_like) -> Dict[float, int]:
+    """스트림에서 Dynamic 객체를 찾아 offset → velocity 딕셔너리를 만든다."""
+    import music21.dynamics as m21dyn
+    result: Dict[float, int] = {}
+    for el in stream_like.recurse().getElementsByClass(m21dyn.Dynamic):
+        v = _DYNAMIC_VELOCITY.get(el.value)
+        if v is not None:
+            result[float(el.offset)] = v
+    return result
+
+
 def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
     """quarterLength → (GP Duration.value, isDotted).
 
@@ -246,8 +263,17 @@ def _is_tied(tie) -> bool:
 def _extract_events(stream_like) -> List[NoteEvent]:
     """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다."""
     events: List[NoteEvent] = []
+    vel_map = _build_velocity_map(stream_like)
+    sorted_vel_offsets = sorted(vel_map)
     for n in stream_like.notesAndRests:
         ql = float(n.duration.quarterLength)
+        note_offset = float(n.offset)
+        current_velocity: Optional[int] = None
+        for off in sorted_vel_offsets:
+            if off <= note_offset:
+                current_velocity = vel_map[off]
+            else:
+                break
         if isinstance(n, m21note.Rest):
             rest_tuplet = None
             if n.duration.tuplets:
@@ -255,7 +281,7 @@ def _extract_events(stream_like) -> List[NoteEvent]:
                 e, t = tp.numberNotesActual, tp.numberNotesNormal
                 if (e, t) in _SUPPORTED_TUPLETS:
                     rest_tuplet = (e, t)
-            events.append(NoteEvent(pitches=[], ql=ql, is_rest=True, tuplet=rest_tuplet))
+            events.append(NoteEvent(pitches=[], ql=ql, is_rest=True, tuplet=rest_tuplet, velocity=current_velocity))
             continue
 
         if isinstance(n, m21chord.Chord):
@@ -278,7 +304,7 @@ def _extract_events(stream_like) -> List[NoteEvent]:
             else:
                 logger.warning("미지원 잇단음 %d:%d — 무시", enters, times)
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity))
     return events
 
 
@@ -438,6 +464,8 @@ def _build_song(
                     gnote.value = fret
                     gnote.string = snum
                     gnote.type = NoteType.tie if note_tied else NoteType.normal
+                    if ev.velocity is not None:
+                        gnote.velocity = ev.velocity
                     gnotes.append(gnote)
                     new_prev[midi] = snum
                 prev_pitch_to_string = new_prev
@@ -475,6 +503,8 @@ def _build_song(
             gnote.value = fret
             gnote.string = snum
             gnote.type = NoteType.tie if ev.tied[0] else NoteType.normal
+            if ev.velocity is not None:
+                gnote.velocity = ev.velocity
             beat.notes = [gnote]
             beats.append(beat)
             prev_pitch_to_string = {ev.pitches[0]: snum}

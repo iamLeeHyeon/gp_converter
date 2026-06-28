@@ -28,6 +28,35 @@ FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample.musicxml")
 WRITTEN_MIDI = [60, 62, 64, 65, 67, 69, 71, 72]  # C4 D4 E4 F4 G4 A4 B4 C5 (적힌 음)
 EXPECTED_MIDI = [m - 12 for m in WRITTEN_MIDI]  # C3 D3 E3 F3 G3 A3 B3 C4 (실제 소리)
 
+_DYNAMICS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <direction placement="above">
+        <direction-type><dynamics><mf/></dynamics></direction-type>
+      </direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type></note>
+      <direction placement="above">
+        <direction-type><dynamics><p/></dynamics></direction-type>
+      </direction>
+      <note><pitch><step>E</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
 
 def test_converts_fixture_to_valid_gp5(tmp_path):
     """fixture를 변환하면 유효한 .gp5 파일이 생성돼야 한다."""
@@ -98,6 +127,26 @@ def test_roundtrip_preserves_beat_structure(tmp_path):
         assert len(beat.notes) == 1, (
             f"비트당 음표가 1개여야 하는데 {len(beat.notes)}개 (동시발음 화음으로 합쳐짐)"
         )
+
+
+def test_dynamics_set_note_velocity_with_carry_forward(tmp_path):
+    """다이나믹 기호가 이후 음표의 velocity를 바꾸고 carry-forward돼야 한다.
+
+    mf(velocity=79) 이후 C5·D5는 79, p(velocity=47) 이후 E5·F5는 47.
+    """
+    xml_path = tmp_path / "dynamics.musicxml"
+    xml_path.write_text(_DYNAMICS_XML, encoding="utf-8")
+    out = str(tmp_path / "dynamics.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 4
+    assert beats[0].notes[0].velocity == 79, "C5: mf=79"
+    assert beats[1].notes[0].velocity == 79, "D5: mf carry-forward=79"
+    assert beats[2].notes[0].velocity == 47, "E5: p=47"
+    assert beats[3].notes[0].velocity == 47, "F5: p carry-forward=47"
 
 
 def test_empty_musicxml_raises(tmp_path):
