@@ -1018,3 +1018,62 @@ def test_note_event_new_fields_have_correct_defaults():
     assert ev.hammer is False
     assert ev.articulations == []
     assert ev.grace is None
+
+
+_TRIPLET_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>6</divisions>
+        <time><beats>2</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>2</duration><type>eighth</type>
+        <time-modification>
+          <actual-notes>3</actual-notes>
+          <normal-notes>2</normal-notes>
+        </time-modification>
+        <notations><tuplet type="start" number="1" placement="above"/></notations>
+      </note>
+      <note>
+        <pitch><step>D</step><octave>5</octave></pitch>
+        <duration>2</duration><type>eighth</type>
+        <time-modification>
+          <actual-notes>3</actual-notes>
+          <normal-notes>2</normal-notes>
+        </time-modification>
+      </note>
+      <note>
+        <pitch><step>E</step><octave>5</octave></pitch>
+        <duration>2</duration><type>eighth</type>
+        <time-modification>
+          <actual-notes>3</actual-notes>
+          <normal-notes>2</normal-notes>
+        </time-modification>
+        <notations><tuplet type="stop" number="1"/></notations>
+      </note>
+      <note><rest/><duration>6</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_triplet_eighth_notes_have_tuplet_duration(tmp_path):
+    """셋잇단 8분음표 3개가 GP5에서 Tuplet(enters=3, times=2)으로 표시돼야 한다."""
+    xml_path = tmp_path / "triplet.musicxml"
+    xml_path.write_text(_TRIPLET_XML, encoding="utf-8")
+    out = str(tmp_path / "triplet.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 3, f"셋잇단 3음이 있어야 하는데 {len(beats)}개"
+    for i, beat in enumerate(beats):
+        assert beat.duration.tuplet.enters == 3, f"beat {i}: enters != 3"
+        assert beat.duration.tuplet.times == 2, f"beat {i}: times != 2"

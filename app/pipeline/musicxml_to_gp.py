@@ -61,6 +61,12 @@ _QL_TO_GPV = {4.0: 1, 2.0: 2, 1.0: 4, 0.5: 8, 0.25: 16, 0.125: 32}
 # 점음표 ql = (4/value)*1.5 이므로 value = 6/ql. (예: 점8분음표 0.75ql → value=8)
 _DOTTED_QL_TO_GPV = {6.0: 1, 3.0: 2, 1.5: 4, 0.75: 8, 0.375: 16, 0.1875: 32}
 
+# 지원 잇단음 (enters, times) 튜플들
+_SUPPORTED_TUPLETS: frozenset = frozenset([
+    (3, 2), (5, 4), (6, 4), (7, 4),
+    (9, 8), (10, 8), (11, 8), (12, 8), (13, 8),
+])
+
 # 클래식/핑거스타일 기타 표준악보(탭 아님) 표기 관행: 작은 "8" 표기 유무와
 # 무관하게 적힌 음보다 항상 1옥타브 낮게 소리난다. Audiveris는 그려진 대로
 # 정확히 읽으므로, 실제 소리나는 음을 얻으려면 적힌 MIDI에서 12를 빼야 한다.
@@ -243,7 +249,13 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     for n in stream_like.notesAndRests:
         ql = float(n.duration.quarterLength)
         if isinstance(n, m21note.Rest):
-            events.append(NoteEvent(pitches=[], ql=ql, is_rest=True))
+            rest_tuplet = None
+            if n.duration.tuplets:
+                tp = n.duration.tuplets[0]
+                e, t = tp.numberNotesActual, tp.numberNotesNormal
+                if (e, t) in _SUPPORTED_TUPLETS:
+                    rest_tuplet = (e, t)
+            events.append(NoteEvent(pitches=[], ql=ql, is_rest=True, tuplet=rest_tuplet))
             continue
 
         if isinstance(n, m21chord.Chord):
@@ -254,7 +266,19 @@ def _extract_events(stream_like) -> List[NoteEvent]:
             midis = [n.pitch.midi]
             tied = [_is_tied(n.tie)]
         pitches = [m + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET for m in midis]
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied))
+
+        # 잇단음 감지
+        tuplet = None
+        if n.duration.tuplets:
+            tp = n.duration.tuplets[0]
+            enters = tp.numberNotesActual
+            times = tp.numberNotesNormal
+            if (enters, times) in _SUPPORTED_TUPLETS:
+                tuplet = (enters, times)
+            else:
+                logger.warning("미지원 잇단음 %d:%d — 무시", enters, times)
+
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet))
     return events
 
 
@@ -369,13 +393,21 @@ def _build_song(
         prev_pitch_to_string: Dict[int, int] = {}
 
         for ev in events:
-            gp_val, is_dotted = _ql_to_gp_duration(ev.ql)
+            if ev.tuplet is not None:
+                enters, times = ev.tuplet
+                ql_for_duration = ev.ql * enters / times
+            else:
+                ql_for_duration = ev.ql
+            gp_val, is_dotted = _ql_to_gp_duration(ql_for_duration)
 
             if ev.is_rest:
                 beat = Beat(voice=voice)
                 beat.status = BeatStatus.rest
                 beat.duration.value = gp_val
                 beat.duration.isDotted = is_dotted
+                if ev.tuplet is not None:
+                    enters, times = ev.tuplet
+                    beat.duration.tuplet = gpm.Tuplet(enters=enters, times=times)
                 beat.notes = []
                 beats.append(beat)
                 prev_pitch_to_string = {}
@@ -391,6 +423,9 @@ def _build_song(
                 beat.status = BeatStatus.normal
                 beat.duration.value = gp_val
                 beat.duration.isDotted = is_dotted
+                if ev.tuplet is not None:
+                    enters, times = ev.tuplet
+                    beat.duration.tuplet = gpm.Tuplet(enters=enters, times=times)
 
                 gnotes = []
                 new_prev: Dict[int, int] = {}
@@ -432,6 +467,9 @@ def _build_song(
             beat.status = BeatStatus.normal
             beat.duration.value = gp_val
             beat.duration.isDotted = is_dotted
+            if ev.tuplet is not None:
+                enters, times = ev.tuplet
+                beat.duration.tuplet = gpm.Tuplet(enters=enters, times=times)
 
             gnote = Note(beat=beat)
             gnote.value = fret
