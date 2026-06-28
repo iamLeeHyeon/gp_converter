@@ -41,7 +41,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner
+from music21 import converter, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art
 
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,13 @@ _SUPPORTED_TUPLETS: frozenset = frozenset([
 _DYNAMIC_VELOCITY: Dict[str, int] = {
     'ppp': 15, 'pp': 31, 'p': 47, 'mp': 63,
     'mf': 79,  'f':  95, 'ff': 111, 'fff': 127,
+}
+
+_ARTICULATION_MAP: Dict[type, str] = {
+    m21art.Staccato:     'staccato',
+    m21art.Accent:       'accent',
+    m21art.StrongAccent: 'strong-accent',
+    m21art.Tenuto:       'tenuto',
 }
 
 # 클래식/핑거스타일 기타 표준악보(탭 아님) 표기 관행: 작은 "8" 표기 유무와
@@ -255,6 +262,19 @@ def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
     return _QL_TO_GPV[nearest], False
 
 
+def _apply_articulations(gnote: Note, articulations: List[str]) -> None:
+    """아티큘레이션 리스트를 GP5 NoteEffect에 적용한다."""
+    for art in articulations:
+        if art == 'staccato':
+            gnote.effect.staccato = True
+        elif art == 'accent':
+            gnote.effect.accentuatedNote = True
+        elif art == 'strong-accent':
+            gnote.effect.heavyAccentuatedNote = True
+        elif art == 'tenuto':
+            gnote.effect.letRing = True
+
+
 def _is_tied(tie) -> bool:
     """music21 Tie 객체가 '이어지는 연속음'(continue/stop)인지 판정한다."""
     return tie is not None and tie.type in ("continue", "stop")
@@ -345,7 +365,13 @@ def _extract_events(stream_like) -> List[NoteEvent]:
                 logger.warning("미지원 잇단음 %d:%d — 무시", enters, times)
 
         hammer = id(n) in slur_continuation_ids
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, hammer=hammer))
+        arts: List[str] = []
+        if hasattr(n, 'articulations'):
+            for a in n.articulations:
+                key = _ARTICULATION_MAP.get(type(a))
+                if key:
+                    arts.append(key)
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, hammer=hammer, articulations=arts))
     return events
 
 
@@ -509,6 +535,7 @@ def _build_song(
                         gnote.velocity = ev.velocity
                     if ev.hammer:
                         gnote.effect.hammer = True
+                    _apply_articulations(gnote, ev.articulations)
                     gnotes.append(gnote)
                     new_prev[midi] = snum
                 prev_pitch_to_string = new_prev
@@ -550,6 +577,7 @@ def _build_song(
                 gnote.velocity = ev.velocity
             if ev.hammer:
                 gnote.effect.hammer = True
+            _apply_articulations(gnote, ev.articulations)
             beat.notes = [gnote]
             beats.append(beat)
             prev_pitch_to_string = {ev.pitches[0]: snum}

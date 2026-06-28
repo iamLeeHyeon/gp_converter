@@ -1231,3 +1231,56 @@ def test_slur_spanning_two_measures_marks_continuation_notes_as_hammer(tmp_path)
     assert beats[1].notes[0].effect.hammer is True,  "A5(슬러 계속): hammer"
     assert beats[2].notes[0].effect.hammer is True,  "B5(슬러 끝): hammer"
     assert beats[3].notes[0].effect.hammer is False, "G5(슬러 밖): normal"
+
+
+_ARTICULATION_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><articulations><staccato/></articulations></notations>
+      </note>
+      <note>
+        <pitch><step>D</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><articulations><accent/></articulations></notations>
+      </note>
+      <note>
+        <pitch><step>E</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><articulations><strong-accent/></articulations></notations>
+      </note>
+      <note>
+        <pitch><step>F</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><articulations><tenuto/></articulations></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_articulations_applied_to_note_effect(tmp_path):
+    """스타카토/악센트/강악센트/테누토가 각각 NoteEffect에 정확히 매핑돼야 한다."""
+    xml_path = tmp_path / "articulation.musicxml"
+    xml_path.write_text(_ARTICULATION_XML, encoding="utf-8")
+    out = str(tmp_path / "articulation.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 4
+    assert beats[0].notes[0].effect.staccato is True, "C5: staccato"
+    assert beats[1].notes[0].effect.accentuatedNote is True, "D5: accent"
+    assert beats[2].notes[0].effect.heavyAccentuatedNote is True, "E5: strong-accent"
+    assert beats[3].notes[0].effect.letRing is True, "F5: tenuto"
