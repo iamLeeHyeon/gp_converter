@@ -1172,3 +1172,62 @@ def test_slur_marks_continuation_notes_as_hammer_on(tmp_path):
     assert beats[0].notes[0].effect.hammer is False, "슬러 첫 음은 normal"
     assert beats[1].notes[0].effect.hammer is True, "슬러 두 번째 음은 hammer"
     assert beats[2].notes[0].effect.hammer is True, "슬러 세 번째 음은 hammer"
+
+
+_CROSS_MEASURE_SLUR_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>2</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><slur type="start" number="1"/></notations>
+      </note>
+      <note>
+        <pitch><step>A</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <note>
+        <pitch><step>B</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+        <notations><slur type="stop" number="1"/></notations>
+      </note>
+      <note>
+        <pitch><step>G</step><octave>5</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_slur_spanning_two_measures_marks_continuation_notes_as_hammer(tmp_path):
+    """마디 경계를 넘는 슬러도 hammer-on으로 표시돼야 한다(크로스마디 회귀 테스트).
+
+    마디1: G5(슬러 시작, normal), A5(슬러 계속, hammer)
+    마디2: B5(슬러 끝, hammer), G5(슬러 밖, normal)
+    """
+    xml_path = tmp_path / "cross_measure_slur.musicxml"
+    xml_path.write_text(_CROSS_MEASURE_SLUR_XML, encoding="utf-8")
+    out = str(tmp_path / "cross_measure_slur.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    track = song.tracks[0]
+    beats = [b for m in track.measures for v in m.voices for b in v.beats if b.notes]
+    assert len(beats) == 4
+
+    assert beats[0].notes[0].effect.hammer is False, "G5(슬러 첫음): normal"
+    assert beats[1].notes[0].effect.hammer is True,  "A5(슬러 계속): hammer"
+    assert beats[2].notes[0].effect.hammer is True,  "B5(슬러 끝): hammer"
+    assert beats[3].notes[0].effect.hammer is False, "G5(슬러 밖): normal"

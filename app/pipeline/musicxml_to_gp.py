@@ -266,7 +266,6 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     vel_map = _build_velocity_map(stream_like)
     sorted_vel_offsets = sorted(vel_map)
     slur_continuation_ids: set = set()
-    all_notes = list(stream_like.notesAndRests)
 
     # 슬러 찾기: stream_like의 부모(part)에서 모든 슬러 검색
     # (measure 자체는 슬러를 갖지 않고, 상위 part가 보유)
@@ -274,16 +273,27 @@ def _extract_events(stream_like) -> List[NoteEvent]:
     while root_stream is not None and hasattr(root_stream, 'activeSite') and root_stream.activeSite is not None:
         root_stream = root_stream.activeSite
 
-    # root_stream이 part라면 슬러 검색
+    # root_stream이 part라면 슬러 검색.
+    # music21 Slur는 시작/끝 두 음만 spanned element로 들고 있고, 그 "사이"
+    # 음들(예: 한 마디 안의 G-A-B 슬러에서 중간 A)은 포함하지 않는다.
+    # 그래서 시작~끝 사이의 모든 음을 hammer-on으로 잡으려면 part 전체를
+    # 평탄화(flatten)한 전역 음표 리스트에서 시작/끝의 인덱스를 찾아
+    # 그 구간을 슬라이스해야 한다. 기존 코드는 "현재 보이스/마디"의
+    # all_notes로 index()를 했는데, 슬러가 마디 경계를 넘으면 시작 또는
+    # 끝 음이 그 리스트에 없어 ValueError가 나고 슬러 전체가 조용히
+    # 버려졌다. root_stream(part 전체)을 flatten()한 전역 리스트를 쓰면
+    # 음표 객체 동일성(identity)이 보존되므로 마디를 넘어도 정확히
+    # 인덱스를 찾을 수 있다.
+    flat_notes = list(root_stream.flatten().notesAndRests) if root_stream else []
     for slur in root_stream.recurse().getElementsByClass(m21spanner.Slur) if root_stream else []:
         spanned = slur.getSpannedElements()
         if len(spanned) >= 2:
             first_note = spanned[0]
             last_note = spanned[-1]
             try:
-                start_idx = all_notes.index(first_note)
-                end_idx = all_notes.index(last_note)
-                for note in all_notes[start_idx + 1 : end_idx + 1]:
+                start_idx = flat_notes.index(first_note)
+                end_idx = flat_notes.index(last_note)
+                for note in flat_notes[start_idx + 1 : end_idx + 1]:
                     slur_continuation_ids.add(id(note))
             except (ValueError, IndexError):
                 # 음표 찾기 실패 — 무시
