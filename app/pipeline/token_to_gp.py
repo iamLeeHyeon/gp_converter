@@ -19,6 +19,11 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+import guitarpro
+import guitarpro.models as gpm
+from guitarpro import Beat, Note, NoteType
+from guitarpro.models import BeatStatus
+
 logger = logging.getLogger(__name__)
 
 _DUR_MAP = {"1": 1, "2": 2, "4": 4, "8": 8, "16": 16, "32": 32}
@@ -135,3 +140,80 @@ def _parse_token_texts(token_texts: List[str]) -> List[_MeasureData]:
 
     flush_measure()
     return measures
+
+
+def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
+    """_MeasureData 리스트를 PyGuitarPro Song 객체로 조립한다."""
+    song = gpm.Song()
+    track = song.tracks[0]
+    track.name = "Guitar"
+
+    def _fill_measure(measure: gpm.Measure, mdata: _MeasureData) -> None:
+        voice = measure.voices[0]
+        voice.beats = []
+        for bdata in mdata.beats:
+            beat = Beat(voice)
+            beat.duration = gpm.Duration()
+            beat.duration.value = bdata.duration_value
+
+            if bdata.is_rest or not bdata.notes:
+                beat.status = BeatStatus.rest
+                beat.notes = []
+            else:
+                beat.status = BeatStatus.normal
+                for string_num, fret_num in bdata.notes:
+                    gnote = Note(beat)
+                    gnote.value = fret_num
+                    gnote.string = string_num
+                    gnote.type = NoteType.normal
+                    gnote.velocity = bdata.velocity
+                    beat.notes.append(gnote)
+
+            voice.beats.append(beat)
+
+        if not voice.beats:
+            beat = Beat(voice)
+            beat.status = BeatStatus.rest
+            beat.duration = gpm.Duration()
+            beat.duration.value = 4
+            beat.notes = []
+            voice.beats.append(beat)
+
+    first_mh = song.measureHeaders[0]
+    first_mh.number = 1
+    first_mh.timeSignature.numerator = measures[0].time_sig_num
+    first_mh.timeSignature.denominator.value = measures[0].time_sig_den
+    _fill_measure(track.measures[0], measures[0])
+
+    start = first_mh.start + first_mh.length
+    for i, mdata in enumerate(measures[1:], start=2):
+        mh = gpm.MeasureHeader()
+        mh.number = i
+        mh.start = start
+        mh.timeSignature.numerator = mdata.time_sig_num
+        mh.timeSignature.denominator.value = mdata.time_sig_den
+        song.measureHeaders.append(mh)
+
+        m = gpm.Measure(track, mh)
+        _fill_measure(m, mdata)
+        track.measures.append(m)
+
+        start += mh.length
+
+    return song
+
+
+def token_texts_to_gp5(token_texts: List[str], out_path: str) -> str:
+    """tokenText 리스트를 파싱해 .gp5 파일로 저장하고 경로를 반환한다.
+
+    Raises
+    ------
+    ValueError
+        파싱된 마디가 없는 경우.
+    """
+    measures = _parse_token_texts(token_texts)
+    if not measures:
+        raise ValueError("파싱된 마디가 없습니다.")
+    song = _build_gp5_song(measures)
+    guitarpro.write(song, out_path)
+    return out_path
