@@ -14,6 +14,9 @@ def run_conversion(pdf_path: str, workdir: str, audiveris_cmd: str, tuxguitar_cm
 
     탭보표가 감지되면 guitar-tab-omr OMR 경로를 사용한다.
     탭보표가 없거나 감지 실패 시 Audiveris 경로(기존 동작)로 폴백한다.
+
+    탭보표가 감지됐으나 OMR이 실패(OmrTabError)하면 Audiveris로 폴백하지 않고
+    그대로 에러를 전파한다 — 탭을 잘못 인식한 오선보 결과보다 명시적 실패가 낫다.
     """
     gp5_path = os.path.join(workdir, "output.gp5")
 
@@ -24,7 +27,7 @@ def run_conversion(pdf_path: str, workdir: str, audiveris_cmd: str, tuxguitar_cm
         logger.warning("탭 인식 실패, 휴리스틱으로 폴백: %s", e)
 
     if tab_regions:
-        token_texts = run_omr_tab(pdf_path, tab_regions, workdir)
+        token_texts = run_omr_tab(pdf_path, tab_regions, workdir, timeout=timeout)
         return token_texts_to_gp5(token_texts, gp5_path)
 
     xml_dir = os.path.join(workdir, "xml")

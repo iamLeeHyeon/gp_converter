@@ -13,7 +13,8 @@ def test_happy_path(tmp_path):
     workdir = tmp_path / "work"
     workdir.mkdir()
 
-    with patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl") as a, \
+    with patch("app.pipeline.orchestrator.detect_tab_staves", return_value=[]), \
+         patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl") as a, \
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")) as t:
         result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
 
@@ -28,7 +29,8 @@ def test_audiveris_failure_propagates(tmp_path):
     workdir = tmp_path / "work"
     workdir.mkdir()
 
-    with patch("app.pipeline.orchestrator.pdf_to_musicxml", side_effect=AudiverisError("악보 인식 실패")):
+    with patch("app.pipeline.orchestrator.detect_tab_staves", return_value=[]), \
+         patch("app.pipeline.orchestrator.pdf_to_musicxml", side_effect=AudiverisError("악보 인식 실패")):
         import pytest
         with pytest.raises(AudiverisError):
             run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
@@ -41,7 +43,8 @@ def test_gpconvert_failure_propagates(tmp_path):
     workdir = tmp_path / "work"
     workdir.mkdir()
 
-    with patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl"), \
+    with patch("app.pipeline.orchestrator.detect_tab_staves", return_value=[]), \
+         patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl"), \
          patch("app.pipeline.orchestrator.musicxml_to_gp5", side_effect=GpConvertError("gp 생성 실패")):
         with pytest.raises(GpConvertError):
             run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)

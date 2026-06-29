@@ -94,7 +94,7 @@ def _write_manifest(clips_dir: str, image_paths: List[str]) -> str:
     return manifest_path
 
 
-def _run_inference(manifest_path: str, output_path: str, omr_dir: Path) -> None:
+def _run_inference(manifest_path: str, output_path: str, omr_dir: Path, timeout: int = 0) -> None:
     infer_script = omr_dir / "scripts" / "guitar_omr_infer.py"
     if not infer_script.exists():
         raise OmrTabError(f"guitar_omr_infer.py not found: {infer_script}")
@@ -111,7 +111,13 @@ def _run_inference(manifest_path: str, output_path: str, omr_dir: Path) -> None:
     if model_dir:
         cmd += ["--model-dir", model_dir]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=timeout if timeout > 0 else None,
+    )
     if result.returncode != 0:
         raise OmrTabError(
             f"guitar_omr_infer.py 실패 (exit {result.returncode}): {result.stderr[:500]}"
@@ -122,6 +128,7 @@ def run_omr_tab(
     pdf_path: str,
     regions: List[TabStaffRegion],
     workdir: str,
+    timeout: int = 0,
 ) -> List[str]:
     """PDF 탭 시스템 전체를 OMR로 처리해 tokenText 리스트를 반환한다.
 
@@ -153,7 +160,7 @@ def run_omr_tab(
 
     manifest_path = _write_manifest(clips_dir, image_paths)
     output_path = str(Path(workdir) / "predictions.json")
-    _run_inference(manifest_path, output_path, omr_dir)
+    _run_inference(manifest_path, output_path, omr_dir, timeout=timeout)
 
     with open(output_path, encoding="utf-8") as f:
         predictions_json = json.load(f)
