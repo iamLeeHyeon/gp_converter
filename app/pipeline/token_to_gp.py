@@ -35,12 +35,17 @@ from guitarpro.models import BeatStatus, SlideType
 
 logger = logging.getLogger(__name__)
 
-_DUR_MAP = {"1": 1, "2": 2, "4": 4, "8": 8, "16": 16, "32": 32}
+_DUR_MAP = {"1": 1, "2": 2, "4": 4, "8": 8, "16": 16, "32": 32, "64": 64}
 _DYN_MAP = {
     "ppp": 15, "pp": 31, "p": 47, "mp": 63,
     "mf": 79, "f": 95, "ff": 111, "fff": 127,
 }
 _NOTE_RE = re.compile(r"N_S(\d+)_F(\d+|X)$")
+
+# 음표 길이 → 1/64분음표 단위 환산
+_DUR_UNITS: dict = {1: 64, 2: 32, 4: 16, 8: 8, 16: 4, 32: 2, 64: 1}
+# 마디를 정확히 채울 때 사용할 음표 후보 (긴 것부터)
+_DUR_FILL_ORDER = [1, 2, 4, 8, 16, 32]
 
 _SLIDE_OUT_MAP: dict = {
     "1": SlideType.shiftSlideTo,
@@ -88,8 +93,10 @@ def _apply_ntech(token: str, beat: _BeatData) -> None:
         logger.warning("NTECH 토큰이 음표 없이 등장: %s", token)
         return
     note = beat.notes[-1]
-    if token == "NTECH_TIE_DEST":
-        note.is_tie = True
+    if token in ("NTECH_TIE_DEST", "NTECH_TIE_START"):
+        # TIE_DEST → NoteType.tie 로 변환; TIE_START는 일반 음표로 유지
+        if token == "NTECH_TIE_DEST":
+            note.is_tie = True
     elif token == "NTECH_LEGATO_ORIGIN":
         note.legato = True
     elif token == "NTECH_GHOST":
@@ -226,10 +233,25 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
     track = song.tracks[0]
     track.name = "Guitar"
 
+    def _beat_units(bdata: _BeatData) -> float:
+        u = _DUR_UNITS.get(bdata.duration_value, 16)
+        return u * 1.5 if bdata.is_dotted else float(u)
+
     def _fill_measure(measure: gpm.Measure, mdata: _MeasureData) -> None:
         voice = measure.voices[0]
         voice.beats = []
+        expected = (mdata.time_sig_num / mdata.time_sig_den) * 64
+        accumulated = 0.0
+
         for bdata in mdata.beats:
+            units = _beat_units(bdata)
+            if accumulated + units > expected + 0.01:
+                # 마디 용량 초과 — 해당 비트부터 버림
+                logger.debug("마디 용량 초과 비트 제거: dur=%s (%.1f/%.1f)",
+                             bdata.duration_value, accumulated, expected)
+                break
+            accumulated += units
+
             beat = Beat(voice)
             beat.duration = gpm.Duration()
             beat.duration.value = bdata.duration_value
@@ -268,6 +290,20 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
                     beat.notes.append(gnote)
 
             voice.beats.append(beat)
+
+        # 남은 공간을 쉼표로 채움 (마디가 비거나 부족한 경우)
+        remaining = expected - accumulated
+        if remaining > 0.01:
+            for dur_val in _DUR_FILL_ORDER:
+                fill_units = _DUR_UNITS[dur_val]
+                while remaining >= fill_units - 0.01:
+                    rest = Beat(voice)
+                    rest.status = BeatStatus.rest
+                    rest.duration = gpm.Duration()
+                    rest.duration.value = dur_val
+                    rest.notes = []
+                    voice.beats.append(rest)
+                    remaining -= fill_units
 
         if not voice.beats:
             beat = Beat(voice)
