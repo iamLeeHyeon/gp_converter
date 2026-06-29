@@ -17,8 +17,8 @@ from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTChar, LTLine, LTPage, LTCurve, LTRect
 
 _MIN_LINE_WIDTH = 30.0  # 보표선으로 볼 최소 폭(짧은 장식선/빔 제외)
-_GROUP_TOLERANCE_MIN = 1.0  # 등간격 판정 최소 허용오차(pt)
-_GROUP_TOLERANCE_RATIO = 0.3  # 첫 간격 기준 허용오차 비율
+_GROUP_TOLERANCE_MIN = 0.5  # 등간격 판정 최소 허용오차(pt)
+_GROUP_TOLERANCE_RATIO = 0.15  # 첫 간격 기준 허용오차 비율 (0.3→0.15: 5선보 오탐지 방지)
 _TAB_STRING_COUNT = 6
 
 
