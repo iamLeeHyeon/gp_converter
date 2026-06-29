@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from app.jobs import JobStore, JobStatus
+from app.jobs import Job, JobStore, JobStatus
 
 
 def test_create_and_get(tmp_path):
@@ -63,3 +63,26 @@ def test_write_failure_does_not_corrupt_existing_file(tmp_path, monkeypatch):
     assert open(meta_path).read() == original_content
     leftover = [f for f in os.listdir(os.path.dirname(meta_path)) if f != "job.json"]
     assert leftover == []
+
+
+def test_job_has_progress_pct(tmp_path):
+    store = JobStore(str(tmp_path))
+    job = store.create()
+    assert job.progress_pct == 0
+
+
+def test_update_progress_pct(tmp_path):
+    store = JobStore(str(tmp_path))
+    job = store.create()
+    store.update(job.id, progress_pct=42)
+    updated = store.get(job.id)
+    assert updated.progress_pct == 42
+
+
+def test_progress_persists_across_read(tmp_path):
+    store = JobStore(str(tmp_path))
+    job = store.create()
+    store.update(job.id, progress_pct=75, status=JobStatus.RUNNING)
+    reloaded = store.get(job.id)
+    assert reloaded.progress_pct == 75
+    assert reloaded.status == JobStatus.RUNNING

@@ -20,6 +20,7 @@ class Job:
     workdir: str
     message: str = ""
     result_path: str = ""
+    progress_pct: int = 0
 
 
 class JobStore:
