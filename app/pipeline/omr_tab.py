@@ -79,3 +79,96 @@ def crop_tab_systems(
         doc.close()
 
     return image_paths
+
+
+def _write_manifest(clips_dir: str, image_paths: List[str]) -> str:
+    manifest = {
+        "clips": [
+            {"id": f"clip-{i + 1}", "imagePath": p}
+            for i, p in enumerate(image_paths)
+        ]
+    }
+    manifest_path = str(Path(clips_dir) / "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False)
+    return manifest_path
+
+
+def _run_inference(manifest_path: str, output_path: str, omr_dir: Path) -> None:
+    infer_script = omr_dir / "scripts" / "guitar_omr_infer.py"
+    if not infer_script.exists():
+        raise OmrTabError(f"guitar_omr_infer.py not found: {infer_script}")
+
+    cmd = [
+        sys.executable,
+        str(infer_script),
+        "--input-json", manifest_path,
+        "--output-json", output_path,
+        "--device", "auto",
+    ]
+
+    model_dir = os.environ.get("GUITAR_OMR_MODEL_DIR")
+    if model_dir:
+        cmd += ["--model-dir", model_dir]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise OmrTabError(
+            f"guitar_omr_infer.py 실패 (exit {result.returncode}): {result.stderr[:500]}"
+        )
+
+
+def run_omr_tab(
+    pdf_path: str,
+    regions: List[TabStaffRegion],
+    workdir: str,
+) -> List[str]:
+    """PDF 탭 시스템 전체를 OMR로 처리해 tokenText 리스트를 반환한다.
+
+    Parameters
+    ----------
+    pdf_path:
+        입력 PDF 경로.
+    regions:
+        detect_tab_staves가 반환한 TabStaffRegion 리스트 (전 페이지).
+    workdir:
+        작업 디렉토리. clips/ 서브디렉토리에 이미지가 저장된다.
+
+    Returns
+    -------
+    List[str]
+        시스템 순서대로 정렬된 tokenText 리스트.
+
+    Raises
+    ------
+    OmrTabError
+        환경변수 미설정, subprocess 실패, 모든 clip 인식 실패 시.
+    """
+    omr_dir = _get_omr_dir()
+    clips_dir = str(Path(workdir) / "clips")
+
+    image_paths = crop_tab_systems(pdf_path, regions, clips_dir)
+    if not image_paths:
+        raise OmrTabError("크롭된 탭 시스템 이미지가 없습니다.")
+
+    manifest_path = _write_manifest(clips_dir, image_paths)
+    output_path = str(Path(workdir) / "predictions.json")
+    _run_inference(manifest_path, output_path, omr_dir)
+
+    with open(output_path, encoding="utf-8") as f:
+        predictions_json = json.load(f)
+
+    token_texts: List[str] = []
+    for pred in predictions_json.get("predictions", []):
+        token_text = pred.get("tokenText")
+        if not token_text:
+            logger.warning("clip %s tokenText 없음, 스킵", pred.get("clipId"))
+            continue
+        for w in pred.get("warnings", []):
+            logger.warning("clip %s: %s", pred.get("clipId"), w)
+        token_texts.append(token_text)
+
+    if not token_texts:
+        raise OmrTabError("모든 clip OMR 실패: 변환 불가")
+
+    return token_texts
