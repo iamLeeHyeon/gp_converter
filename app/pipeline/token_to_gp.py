@@ -291,8 +291,12 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
 
             if bdata.strum_down is True:
                 beat.effect.pickStroke = BeatStrokeDirection.down
+                beat.effect.stroke.direction = BeatStrokeDirection.down
+                beat.effect.stroke.value = bdata.duration_value
             elif bdata.strum_down is False:
                 beat.effect.pickStroke = BeatStrokeDirection.up
+                beat.effect.stroke.direction = BeatStrokeDirection.up
+                beat.effect.stroke.value = bdata.duration_value
 
             voice.beats.append(beat)
 
