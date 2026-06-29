@@ -59,11 +59,13 @@ def crop_tab_systems(
             y_top_pm = max(region.line_ys)
             y_bot_pm = min(region.line_ys)
             staff_height = y_top_pm - y_bot_pm
-            margin = staff_height * 0.5
+            # 상단: 리듬 스템이 TAB 위 공간(5선보-TAB 사이)에 있으므로 충분히 확보
+            top_margin = staff_height * 1.5
+            bot_margin = staff_height * 0.5
 
             # pymupdf: y0=위(작은 값), y1=아래(큰 값)
-            rect_y0 = page_height - (y_top_pm + margin)
-            rect_y1 = page_height - (y_bot_pm - margin)
+            rect_y0 = page_height - (y_top_pm + top_margin)
+            rect_y1 = page_height - (y_bot_pm - bot_margin)
 
             page_bounds = fitz.Rect(0, 0, page.rect.width, page_height)
             rect = fitz.Rect(0, rect_y0, page.rect.width, rect_y1)
@@ -110,6 +112,9 @@ def _run_inference(manifest_path: str, output_path: str, omr_dir: Path, timeout:
     model_dir = os.environ.get("GUITAR_OMR_MODEL_DIR")
     if model_dir:
         cmd += ["--model-dir", model_dir]
+    else:
+        model_repo = os.environ.get("GUITAR_OMR_MODEL_REPO", "kk9293/guitar-tab-omr")
+        cmd += ["--model-repo", model_repo]
 
     result = subprocess.run(
         cmd,
