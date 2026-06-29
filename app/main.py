@@ -9,8 +9,10 @@ from fastapi.staticfiles import StaticFiles
 from app.config import Settings
 from app.jobs import JobStore, JobStatus
 from app.worker import process_job
+from app.routers.auth import router as auth_router
 
 app = FastAPI(title="PDF → Guitar Pro 변환기")
+app.include_router(auth_router)
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1MB씩 읽어 전체를 메모리에 버퍼링하지 않는다.
 

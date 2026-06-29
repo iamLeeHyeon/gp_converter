@@ -1,6 +1,7 @@
 import os
 import jwt
 import httpx
+from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -12,35 +13,50 @@ from app.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_GOOGLE_ID = os.environ["GOOGLE_CLIENT_ID"]
-_GOOGLE_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
-_GITHUB_ID = os.environ["GITHUB_CLIENT_ID"]
-_GITHUB_SECRET = os.environ["GITHUB_CLIENT_SECRET"]
+try:
+    _GOOGLE_ID = os.environ["GOOGLE_CLIENT_ID"]
+    _GOOGLE_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
+    _GITHUB_ID = os.environ["GITHUB_CLIENT_ID"]
+    _GITHUB_SECRET = os.environ["GITHUB_CLIENT_SECRET"]
+except KeyError as e:
+    raise ValueError(
+        f"필수 환경변수 누락: {e}. .env 파일 또는 환경변수를 설정하세요."
+    ) from e
+
 _FRONTEND = os.getenv("FRONTEND_URL", "http://localhost:5173")
 _BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 
 @router.get("/google")
 def google_login():
-    params = "&".join([
-        "response_type=code",
-        f"client_id={_GOOGLE_ID}",
-        f"redirect_uri={_BACKEND}/auth/google/callback",
-        "scope=openid+email+profile",
-    ])
+    params = urlencode({
+        "response_type": "code",
+        "client_id": _GOOGLE_ID,
+        "redirect_uri": f"{_BACKEND}/auth/google/callback",
+        "scope": "openid email profile",
+    })
     return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
 
 
 @router.get("/google/callback")
 async def google_callback(code: str, db: Session = Depends(get_db)):
     async with httpx.AsyncClient() as c:
-        tok = (await c.post("https://oauth2.googleapis.com/token", data={
+        tok_resp = await c.post("https://oauth2.googleapis.com/token", data={
             "code": code, "client_id": _GOOGLE_ID, "client_secret": _GOOGLE_SECRET,
             "redirect_uri": f"{_BACKEND}/auth/google/callback",
             "grant_type": "authorization_code",
-        })).json()
-        info = (await c.get("https://www.googleapis.com/oauth2/v2/userinfo",
-                             headers={"Authorization": f"Bearer {tok['access_token']}"})).json()
+        })
+        tok_resp.raise_for_status()
+        tok = tok_resp.json()
+        if "error" in tok:
+            raise HTTPException(status_code=400, detail=f"OAuth error: {tok.get('error_description', tok['error'])}")
+
+        info_resp = await c.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {tok['access_token']}"},
+        )
+        info_resp.raise_for_status()
+        info = info_resp.json()
 
     user = db.query(User).filter_by(provider="google", provider_id=str(info["id"])).first()
     if not user:
@@ -56,25 +72,41 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
 
 @router.get("/github")
 def github_login():
-    params = f"client_id={_GITHUB_ID}&redirect_uri={_BACKEND}/auth/github/callback&scope=user:email"
+    params = urlencode({
+        "client_id": _GITHUB_ID,
+        "redirect_uri": f"{_BACKEND}/auth/github/callback",
+        "scope": "user:email",
+    })
     return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
 
 
 @router.get("/github/callback")
 async def github_callback(code: str, db: Session = Depends(get_db)):
     async with httpx.AsyncClient() as c:
-        tok = (await c.post(
+        tok_resp = await c.post(
             "https://github.com/login/oauth/access_token",
             data={"client_id": _GITHUB_ID, "client_secret": _GITHUB_SECRET,
                   "code": code, "redirect_uri": f"{_BACKEND}/auth/github/callback"},
             headers={"Accept": "application/json"},
-        )).json()
-        info = (await c.get("https://api.github.com/user",
-                              headers={"Authorization": f"Bearer {tok['access_token']}",
-                                       "Accept": "application/json"})).json()
-        emails = (await c.get("https://api.github.com/user/emails",
-                               headers={"Authorization": f"Bearer {tok['access_token']}",
-                                        "Accept": "application/json"})).json()
+        )
+        tok_resp.raise_for_status()
+        tok = tok_resp.json()
+        if "error" in tok:
+            raise HTTPException(status_code=400, detail=f"OAuth error: {tok.get('error_description', tok['error'])}")
+
+        info_resp = await c.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"Bearer {tok['access_token']}", "Accept": "application/json"},
+        )
+        info_resp.raise_for_status()
+        info = info_resp.json()
+
+        emails_resp = await c.get(
+            "https://api.github.com/user/emails",
+            headers={"Authorization": f"Bearer {tok['access_token']}", "Accept": "application/json"},
+        )
+        emails_resp.raise_for_status()
+        emails = emails_resp.json()
 
     primary_email = next((e["email"] for e in emails if e.get("primary")), info.get("email", ""))
     provider_id = str(info["id"])
