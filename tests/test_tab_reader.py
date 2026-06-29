@@ -6,6 +6,7 @@ from app.pipeline.tab_reader import (
     _CharBox,
     _extract_region_notes,
     _group_evenly_spaced,
+    _try_extend_to_six,
     detect_tab_staves,
     extract_tab_notes,
 )
@@ -26,6 +27,28 @@ EXPECTED_TAB_NOTES = [
     (2, 1), (2, 3), (2, 5), (1, 1), (1, 3), (1, 5), (1, 7), (1, 8),
     (1, 8), (1, 7), (1, 5), (1, 3), (1, 1), (2, 5), (2, 3), (2, 1),
 ]
+
+
+def test_try_extend_to_six_recovers_stolen_line():
+    """노이즈 라인이 6번째 탭선을 탈취한 경우, 예상 위치의 y를 추가해 6줄로 복구해야 한다.
+
+    santa tell me PDF 실사례 재현:
+      5줄 그룹 [570.9, 581.1, 591.3, 601.6, 611.8] + 노이즈 615.8 → [615.8, 622.0]으로 탈취
+      expected 6번째 = 611.8 + 10.2 ≈ 622.0 이 all_ys에 있으면 그룹에 추가해야 한다.
+    """
+    group = [570.9, 581.1, 591.3, 601.6, 611.8]
+    all_ys = [570.9, 581.1, 591.3, 601.6, 611.8, 615.8, 622.0, 626.0]
+    result = _try_extend_to_six(group, all_ys)
+    assert result == [570.9, 581.1, 591.3, 601.6, 611.8, 622.0]
+
+
+def test_try_extend_to_six_no_match_stays_five():
+    """5줄 표준보표처럼 예상 위치에 y가 없으면 그대로 5줄이어야 한다."""
+    group = [393.6, 400.4, 407.2, 414.0, 420.8]
+    # 다음 y가 570.9 (gap 150pt, 예상 6th=427.6과 전혀 다름)
+    all_ys = [393.6, 400.4, 407.2, 414.0, 420.8, 570.9]
+    result = _try_extend_to_six(group, all_ys)
+    assert result == [393.6, 400.4, 407.2, 414.0, 420.8]
 
 
 def test_group_evenly_spaced_groups_by_line_count_not_absolute_gap():

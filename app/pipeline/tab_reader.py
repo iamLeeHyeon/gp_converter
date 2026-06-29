@@ -64,13 +64,33 @@ def _group_evenly_spaced(ys: List[float]) -> List[List[float]]:
     return groups
 
 
+def _try_extend_to_six(group: List[float], all_ys: List[float]) -> List[float]:
+    """5줄 등간격 그룹을 6줄로 확장 시도.
+
+    노이즈 라인이 실제 6번째 탭선을 가로채 5줄만 남았을 때,
+    예상 위치(위 또는 아래로 spacing 거리)에 y가 있으면 그룹에 추가한다.
+    """
+    if len(group) != 5:
+        return group
+    spacing = (group[-1] - group[0]) / 4
+    tol = max(_GROUP_TOLERANCE_MIN, _GROUP_TOLERANCE_RATIO * spacing)
+    for expected in (group[-1] + spacing, group[0] - spacing):
+        for y in all_ys:
+            if y not in group and abs(y - expected) <= tol:
+                return sorted(group + [y])
+    return group
+
+
 def detect_tab_staves(pdf_path: str) -> List[TabStaffRegion]:
     """PDF에서 탭보표(연속 6줄) 영역을 찾는다. 없으면 빈 리스트."""
     regions: List[TabStaffRegion] = []
     for page_index, page in enumerate(extract_pages(pdf_path)):
         lines = _horizontal_lines(page)
         ys = sorted(set(round(line.y0, 1) for line in lines))
-        groups = [g for g in _group_evenly_spaced(ys) if len(g) == _TAB_STRING_COUNT]
+        raw_groups = _group_evenly_spaced(ys)
+        # 5줄 그룹은 노이즈로 탈취된 6번째 줄 복구 시도
+        groups = [_try_extend_to_six(g, ys) if len(g) == 5 else g for g in raw_groups]
+        groups = [g for g in groups if len(g) == _TAB_STRING_COUNT]
         # 페이지 내 읽는 순서(위→아래) = 그룹의 최상단 y좌표 내림차순
         groups.sort(key=lambda g: g[-1], reverse=True)
         for group in groups:
