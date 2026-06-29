@@ -4,7 +4,7 @@ from app.pipeline.orchestrator import run_conversion
 from app.pipeline.audiveris import AudiverisError
 from app.pipeline.musicxml_to_gp import GpConvertError
 from app.pipeline.omr_tab import OmrTabError
-from app.pipeline.tab_reader import TabStaffRegion, TabNote
+from app.pipeline.tab_reader import TabStaffRegion
 
 
 def test_happy_path(tmp_path):
