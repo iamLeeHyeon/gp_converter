@@ -3,8 +3,11 @@ uvicorn[standard]==0.32.*
 python-multipart==0.0.*
 pytest==8.*
 httpx==0.27.*
+sqlalchemy==2.0.*
+pyjwt==2.9.*
 # 변환 파이프라인 출력단 (TuxGuitar 대체)
 music21==8.3.*
 PyGuitarPro==0.10.*
 pdfminer.six==20251107
 pymupdf>=1.24.0
+python-dotenv>=1.0.0
