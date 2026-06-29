@@ -56,9 +56,10 @@ def test_parse_notes_in_beat():
 
     measures = _parse_token_texts([SIMPLE_TOKEN_TEXT])
     first_beat = measures[0].beats[0]
-    assert (6, 7) in first_beat.notes
-    assert (5, 8) in first_beat.notes
-    assert (4, 0) in first_beat.notes
+    pairs = [(n.string, n.fret) for n in first_beat.notes]
+    assert (6, 7) in pairs
+    assert (5, 8) in pairs
+    assert (4, 0) in pairs
 
 
 def test_parse_dynamics():
@@ -80,8 +81,10 @@ def test_parse_two_systems_merges_measures():
 
     measures = _parse_token_texts(TWO_SYSTEM_TEXTS)
     assert len(measures) == 2
-    assert measures[0].beats[0].notes == [(1, 0)]
-    assert measures[1].beats[0].notes == [(1, 7)]
+    n0 = measures[0].beats[0].notes[0]
+    assert n0.string == 1 and n0.fret == 0
+    n1 = measures[1].beats[0].notes[0]
+    assert n1.string == 1 and n1.fret == 7
 
 
 def test_unknown_token_is_skipped(caplog):
@@ -93,7 +96,8 @@ def test_unknown_token_is_skipped(caplog):
         measures = _parse_token_texts([token_text])
 
     assert len(measures) == 1
-    assert measures[0].beats[0].notes == [(1, 0)]
+    n = measures[0].beats[0].notes[0]
+    assert n.string == 1 and n.fret == 0
     assert any("UNKNOWN_TOKEN" in r.message for r in caplog.records)
 
 
@@ -103,6 +107,104 @@ def test_double_bar_does_not_break_measure():
     token_text = "TS_4_4\nBAR\nBEAT DUR_1 REST\nDOUBLE_BAR\nEND_BAR"
     measures = _parse_token_texts([token_text])
     assert len(measures) == 1
+
+
+def test_parse_dead_note():
+    """N_S{n}_FX는 is_dead=True, fret=0인 _NoteData가 돼야 한다."""
+    from app.pipeline.token_to_gp import _parse_token_texts
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_4 N_S1_FX N_S2_F3\nEND_BAR"
+    measures = _parse_token_texts([token_text])
+    notes = measures[0].beats[0].notes
+    assert notes[0].is_dead is True
+    assert notes[0].fret == 0
+    assert notes[0].string == 1
+    assert notes[1].is_dead is False
+    assert notes[1].fret == 3
+
+
+def test_parse_ntech_legato():
+    """NTECH_LEGATO_ORIGIN은 직전 음표의 legato=True로 저장돼야 한다."""
+    from app.pipeline.token_to_gp import _parse_token_texts
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_8 N_S6_F5 NTECH_LEGATO_ORIGIN\nEND_BAR"
+    measures = _parse_token_texts([token_text])
+    note = measures[0].beats[0].notes[0]
+    assert note.legato is True
+
+
+def test_parse_ntech_slide_out():
+    """NTECH_SLIDE_OUT_1은 직전 음표의 slides에 SlideType.shiftSlideTo가 추가돼야 한다."""
+    from app.pipeline.token_to_gp import _parse_token_texts
+    from guitarpro.models import SlideType
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_16 N_S6_F5 NTECH_SLIDE_OUT_1\nEND_BAR"
+    measures = _parse_token_texts([token_text])
+    note = measures[0].beats[0].notes[0]
+    assert SlideType.shiftSlideTo in note.slides
+
+
+def test_parse_dots_1():
+    """DOTS_1은 비트의 is_dotted=True로 저장돼야 한다."""
+    from app.pipeline.token_to_gp import _parse_token_texts
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_4 DOTS_1 N_S1_F0\nEND_BAR"
+    measures = _parse_token_texts([token_text])
+    beat = measures[0].beats[0]
+    assert beat.is_dotted is True
+
+
+def test_gp5_dead_note_type(tmp_path):
+    """dead note는 GP5에서 NoteType.dead로 저장돼야 한다."""
+    import guitarpro
+    from guitarpro import NoteType
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_4 N_S1_FX\nEND_BAR"
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.type == NoteType.dead
+
+
+def test_gp5_slide_effect(tmp_path):
+    """slide note는 GP5에서 effect.slides가 비어있지 않아야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_16 N_S6_F5 NTECH_SLIDE_OUT_1\nEND_BAR"
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.slides  # 비어있지 않음
+
+
+def test_gp5_hammer_on(tmp_path):
+    """NTECH_LEGATO_ORIGIN은 GP5에서 effect.hammer=True로 저장돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_8 N_S6_F5 NTECH_LEGATO_ORIGIN\nEND_BAR"
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.hammer is True
+
+
+def test_gp5_dotted_duration(tmp_path):
+    """DOTS_1은 GP5에서 isDotted=True인 Duration으로 저장돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_4 DOTS_1 N_S1_F0\nEND_BAR"
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    beat = song.tracks[0].measures[0].voices[0].beats[0]
+    assert beat.duration.isDotted is True
 
 
 def test_token_texts_to_gp5_creates_file(tmp_path):

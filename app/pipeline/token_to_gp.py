@@ -5,12 +5,21 @@ guitar-tab-omr tokenText → Guitar Pro 5 변환기
   TS_4_4                           박자표 (분자_분모)
   BAR / END_BAR                    마디 경계
   DOUBLE_BAR                       겹세로줄 (무시)
-  BEAT DUR_N [REST] [DYN_X] [BTECH_STRUM_DOWN|UP] [N_Ss_Ff ...]  비트
+  BEAT DUR_N [DOTS_1] [REST] [DYN_X] [BTECH_STRUM_DOWN|UP] [N_Ss_Ff ...]  비트
   DUR_{1|2|4|8|16|32}             음표 길이
+  DOTS_1                           점음표 (지속시간 × 1.5)
   REST                             쉼표
   N_S{1-6}_F{0-24}                음표 (현, 프렛)
+  N_S{1-6}_FX                     뮤트음 (퍼커시브 X)
   DYN_{ppp|pp|p|mp|mf|f|ff|fff}  다이나믹
   BTECH_STRUM_{DOWN|UP}           스트럼 방향
+  NTECH_TIE_DEST                  타이 도착음
+  NTECH_LEGATO_ORIGIN             해머온/풀오프 시작
+  NTECH_SLIDE_OUT_{1|2|4}         슬라이드 아웃 (1=shift, 2=legato, 4=outUp)
+  NTECH_SLIDE_IN_{1|2}            슬라이드 인 (1=fromBelow, 2=fromAbove)
+  NTECH_GHOST                     고스트 노트
+  NTECH_HARMONIC_VALUE_{n}        하모닉스
+  TUPLET_3_2                      셋잇단음 (미지원, 스킵)
 """
 from __future__ import annotations
 
@@ -22,7 +31,7 @@ from typing import List, Optional, Tuple
 import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
-from guitarpro.models import BeatStatus
+from guitarpro.models import BeatStatus, SlideType
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +40,39 @@ _DYN_MAP = {
     "ppp": 15, "pp": 31, "p": 47, "mp": 63,
     "mf": 79, "f": 95, "ff": 111, "fff": 127,
 }
-_NOTE_RE = re.compile(r"N_S(\d+)_F(\d+)$")
+_NOTE_RE = re.compile(r"N_S(\d+)_F(\d+|X)$")
+
+_SLIDE_OUT_MAP: dict = {
+    "1": SlideType.shiftSlideTo,
+    "2": SlideType.legatoSlideTo,
+    "4": SlideType.outUpwards,
+}
+_SLIDE_IN_MAP: dict = {
+    "1": SlideType.intoFromBelow,
+    "2": SlideType.intoFromAbove,
+}
+
+
+@dataclass
+class _NoteData:
+    string: int
+    fret: int
+    is_dead: bool = False
+    is_tie: bool = False
+    is_ghost: bool = False
+    is_harmonic: bool = False
+    legato: bool = False
+    slides: List[SlideType] = field(default_factory=list)
 
 
 @dataclass
 class _BeatData:
     duration_value: int = 4
     is_rest: bool = False
+    is_dotted: bool = False
     velocity: int = 95
     strum_down: Optional[bool] = None
-    notes: List[Tuple[int, int]] = field(default_factory=list)
+    notes: List[_NoteData] = field(default_factory=list)
 
 
 @dataclass
@@ -48,6 +80,38 @@ class _MeasureData:
     time_sig_num: int = 4
     time_sig_den: int = 4
     beats: List[_BeatData] = field(default_factory=list)
+
+
+def _apply_ntech(token: str, beat: _BeatData) -> None:
+    """NTECH_* 토큰을 현재 비트의 마지막 음표에 적용한다."""
+    if not beat.notes:
+        logger.warning("NTECH 토큰이 음표 없이 등장: %s", token)
+        return
+    note = beat.notes[-1]
+    if token == "NTECH_TIE_DEST":
+        note.is_tie = True
+    elif token == "NTECH_LEGATO_ORIGIN":
+        note.legato = True
+    elif token == "NTECH_GHOST":
+        note.is_ghost = True
+    elif token.startswith("NTECH_HARMONIC_VALUE_"):
+        note.is_harmonic = True
+    elif token.startswith("NTECH_SLIDE_OUT_"):
+        suffix = token.rsplit("_", 1)[-1]
+        slide_type = _SLIDE_OUT_MAP.get(suffix)
+        if slide_type is not None:
+            note.slides.append(slide_type)
+        else:
+            logger.warning("알 수 없는 SLIDE_OUT 타입 스킵: %s", token)
+    elif token.startswith("NTECH_SLIDE_IN_"):
+        suffix = token.rsplit("_", 1)[-1]
+        slide_type = _SLIDE_IN_MAP.get(suffix)
+        if slide_type is not None:
+            note.slides.append(slide_type)
+        else:
+            logger.warning("알 수 없는 SLIDE_IN 타입 스킵: %s", token)
+    else:
+        logger.warning("알 수 없는 NTECH 토큰 스킵: %s", token)
 
 
 def _parse_token_texts(token_texts: List[str]) -> List[_MeasureData]:
@@ -115,6 +179,9 @@ def _parse_token_texts(token_texts: List[str]) -> List[_MeasureData]:
                         else:
                             logger.warning("알 수 없는 DUR 토큰: %s", token)
 
+                    elif token == "DOTS_1":
+                        current_beat.is_dotted = True
+
                     elif token == "REST":
                         current_beat.is_rest = True
 
@@ -131,10 +198,21 @@ def _parse_token_texts(token_texts: List[str]) -> List[_MeasureData]:
                     elif token == "BTECH_STRUM_UP":
                         current_beat.strum_down = False
 
+                    elif token == "TUPLET_3_2":
+                        pass  # 셋잇단음 — GP5 tuplet 지원 미구현, 스킵
+
+                    elif token.startswith("NTECH_"):
+                        _apply_ntech(token, current_beat)
+
                     else:
                         m = _NOTE_RE.match(token)
                         if m:
-                            current_beat.notes.append((int(m.group(1)), int(m.group(2))))
+                            fret_str = m.group(2)
+                            is_dead = fret_str == "X"
+                            fret = 0 if is_dead else int(fret_str)
+                            current_beat.notes.append(
+                                _NoteData(string=int(m.group(1)), fret=fret, is_dead=is_dead)
+                            )
                         else:
                             logger.warning("알 수 없는 토큰 스킵: %s", token)
 
@@ -155,20 +233,38 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
             beat = Beat(voice)
             beat.duration = gpm.Duration()
             beat.duration.value = bdata.duration_value
+            if bdata.is_dotted:
+                beat.duration.isDotted = True
 
             if bdata.is_rest or not bdata.notes:
                 beat.status = BeatStatus.rest
                 beat.notes = []
             else:
                 beat.status = BeatStatus.normal
-                for string_num, fret_num in bdata.notes:
+                for nd in bdata.notes:
                     gnote = Note(beat)
-                    gnote.value = fret_num
+                    gnote.value = nd.fret
                     # guitar-tab-omr: S1=low E(bottom), S6=high E(top)
                     # PyGuitarPro: string 1=high E(top), string 6=low E(bottom)
-                    gnote.string = 7 - string_num
-                    gnote.type = NoteType.normal
+                    gnote.string = 7 - nd.string
                     gnote.velocity = bdata.velocity
+
+                    if nd.is_dead:
+                        gnote.type = NoteType.dead
+                    elif nd.is_tie:
+                        gnote.type = NoteType.tie
+                    else:
+                        gnote.type = NoteType.normal
+
+                    if nd.slides:
+                        gnote.effect.slides = nd.slides
+                    if nd.legato:
+                        gnote.effect.hammer = True
+                    if nd.is_ghost:
+                        gnote.effect.ghostNote = True
+                    if nd.is_harmonic:
+                        gnote.effect.harmonic = gpm.NaturalHarmonic()
+
                     beat.notes.append(gnote)
 
             voice.beats.append(beat)
