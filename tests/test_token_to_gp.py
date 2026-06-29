@@ -207,6 +207,26 @@ def test_gp5_dotted_duration(tmp_path):
     assert beat.duration.isDotted is True
 
 
+def test_gp5_strum_direction(tmp_path):
+    """BTECH_STRUM_DOWN/UP은 GP5 beat.effect.pickStroke로 저장돼야 한다."""
+    import guitarpro
+    from guitarpro.models import BeatStrokeDirection
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = (
+        "TS_4_4\nBAR\n"
+        "BEAT DUR_4 BTECH_STRUM_DOWN N_S6_F5\n"
+        "BEAT DUR_4 BTECH_STRUM_UP N_S6_F5\n"
+        "END_BAR"
+    )
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    beats = song.tracks[0].measures[0].voices[0].beats
+    assert beats[0].effect.pickStroke == BeatStrokeDirection.down
+    assert beats[1].effect.pickStroke == BeatStrokeDirection.up
+
+
 def test_token_texts_to_gp5_creates_file(tmp_path):
     """GP5 파일이 생성돼야 한다."""
     from app.pipeline.token_to_gp import token_texts_to_gp5

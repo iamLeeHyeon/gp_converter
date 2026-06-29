@@ -31,7 +31,7 @@ from typing import List, Optional, Tuple
 import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
-from guitarpro.models import BeatStatus, SlideType
+from guitarpro.models import BeatStatus, BeatStrokeDirection, SlideType
 
 logger = logging.getLogger(__name__)
 
@@ -288,6 +288,11 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
                         gnote.effect.harmonic = gpm.NaturalHarmonic()
 
                     beat.notes.append(gnote)
+
+            if bdata.strum_down is True:
+                beat.effect.pickStroke = BeatStrokeDirection.down
+            elif bdata.strum_down is False:
+                beat.effect.pickStroke = BeatStrokeDirection.up
 
             voice.beats.append(beat)
 
