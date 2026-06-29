@@ -9,7 +9,14 @@ from app.pipeline.tab_reader import detect_tab_staves
 logger = logging.getLogger(__name__)
 
 
-def run_conversion(pdf_path: str, workdir: str, audiveris_cmd: str, tuxguitar_cmd: str, timeout: int) -> str:
+def run_conversion(
+    pdf_path: str,
+    workdir: str,
+    audiveris_cmd: str,
+    tuxguitar_cmd: str,
+    timeout: int,
+    progress_callback=None,  # (pct: int, step: str) -> None
+) -> str:
     """PDF→.gp5 전 과정을 실행하고 .gp5 경로를 반환한다.
 
     탭보표가 감지되면 guitar-tab-omr OMR 경로를 사용한다.
@@ -20,16 +27,29 @@ def run_conversion(pdf_path: str, workdir: str, audiveris_cmd: str, tuxguitar_cm
     """
     gp5_path = os.path.join(workdir, "output.gp5")
 
+    def _cb(pct: int, step: str):
+        if progress_callback:
+            progress_callback(pct, step)
+
     tab_regions = None
     try:
         tab_regions = detect_tab_staves(pdf_path)
     except Exception as e:
         logger.warning("탭 인식 실패, 휴리스틱으로 폴백: %s", e)
 
+    _cb(10, "tab_detect")
+
     if tab_regions:
+        _cb(30, "omr")
         token_texts = run_omr_tab(pdf_path, tab_regions, workdir, timeout=timeout)
-        return token_texts_to_gp5(token_texts, gp5_path)
+        result = token_texts_to_gp5(token_texts, gp5_path)
+        _cb(80, "gp5_build")
+        return result
 
     xml_dir = os.path.join(workdir, "xml")
+    _cb(30, "audiveris")
     xml_path = pdf_to_musicxml(pdf_path, xml_dir, audiveris_cmd=audiveris_cmd, timeout=timeout)
-    return musicxml_to_gp5(xml_path, gp5_path, timeout=timeout, tab_hints=None)
+    _cb(80, "musicxml_convert")
+    result = musicxml_to_gp5(xml_path, gp5_path, timeout=timeout, tab_hints=None)
+    _cb(90, "gp5_build")
+    return result
