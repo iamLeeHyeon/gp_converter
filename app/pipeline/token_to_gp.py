@@ -164,7 +164,9 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
                 for string_num, fret_num in bdata.notes:
                     gnote = Note(beat)
                     gnote.value = fret_num
-                    gnote.string = string_num
+                    # guitar-tab-omr: S1=low E(bottom), S6=high E(top)
+                    # PyGuitarPro: string 1=high E(top), string 6=low E(bottom)
+                    gnote.string = 7 - string_num
                     gnote.type = NoteType.normal
                     gnote.velocity = bdata.velocity
                     beat.notes.append(gnote)

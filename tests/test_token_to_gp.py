@@ -130,20 +130,26 @@ def test_token_texts_to_gp5_parseable(tmp_path):
 
 
 def test_token_texts_to_gp5_note_values(tmp_path):
-    """변환된 GP5의 첫 마디 첫 비트에 올바른 프렛 값이 있어야 한다."""
+    """변환된 GP5의 첫 마디 첫 비트에 올바른 프렛/현 값이 있어야 한다.
+
+    guitar-tab-omr 컨벤션: S1=low E(하단), S6=high E(상단)
+    PyGuitarPro 컨벤션: string 1=high E(상단), string 6=low E(하단)
+    변환식: gp_string = 7 - omr_string
+    """
     import guitarpro
     from app.pipeline.token_to_gp import token_texts_to_gp5
 
+    # S6(high E)->GP string 1, S5(B)->GP string 2, S4(G)->GP string 3
     token_text = "TS_4_4\nBAR\nBEAT DUR_4 N_S6_F7 N_S5_F8 N_S4_F0\nEND_BAR"
     out_path = str(tmp_path / "out.gp5")
     token_texts_to_gp5([token_text], out_path)
 
     song = guitarpro.parse(out_path)
     beat = song.tracks[0].measures[0].voices[0].beats[0]
-    frets = {n.value for n in beat.notes}
-    assert 7 in frets
-    assert 8 in frets
-    assert 0 in frets
+    notes_by_string = {n.string: n.value for n in beat.notes}
+    assert notes_by_string[1] == 7   # S6_F7 → GP string 1 (high E), fret 7
+    assert notes_by_string[2] == 8   # S5_F8 → GP string 2 (B), fret 8
+    assert notes_by_string[3] == 0   # S4_F0 → GP string 3 (G), fret 0
 
 
 def test_token_texts_to_gp5_two_systems(tmp_path):

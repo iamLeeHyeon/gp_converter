@@ -1,7 +1,11 @@
 import os
 from app.config import Settings
 
-def test_defaults():
+def test_defaults(monkeypatch):
+    monkeypatch.delenv("GPC_AUDIVERIS_CMD", raising=False)
+    monkeypatch.delenv("GPC_TUXGUITAR_CMD", raising=False)
+    monkeypatch.delenv("GPC_MAX_UPLOAD_BYTES", raising=False)
+    monkeypatch.delenv("GPC_STEP_TIMEOUT_SEC", raising=False)
     s = Settings()
     assert s.max_upload_bytes == 20 * 1024 * 1024
     assert s.step_timeout_sec == 300
