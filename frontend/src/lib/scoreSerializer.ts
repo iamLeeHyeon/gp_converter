@@ -1,18 +1,16 @@
-import type { ScoreSnapshot, SnapshotBeat, SnapshotNote, Dynamic, Effect } from './scoreTypes'
+import type { ScoreSnapshot, SnapshotTrack, SnapshotMeasure, SnapshotBeat, SnapshotNote, Dynamic, Effect } from './scoreTypes'
 
 const DYNAMIC_VALUES: Record<number, Dynamic> = {
   0: 'ppp', 1: 'pp', 2: 'p', 3: 'mp', 4: 'mf', 5: 'f', 6: 'ff', 7: 'fff',
 }
 
-// alphaTab SlideOutType 숫자값 → Effect 문자열
 const SLIDE_OUT_TYPE_MAP: Record<number, Effect> = {
-  1: 'slide-shift',    // SlideOutType.Shift
-  2: 'slide-legato',   // SlideOutType.Legato
-  4: 'slide-out-below', // SlideOutType.OutDown
+  1: 'slide-shift',
+  2: 'slide-legato',
+  4: 'slide-out-below',
 }
-// alphaTab SlideInType 숫자값 → Effect 문자열
 const SLIDE_IN_TYPE_MAP: Record<number, Effect> = {
-  2: 'slide-in-above', // SlideInType.IntoFromAbove
+  2: 'slide-in-above',
 }
 
 function getNoteEffect(note: Record<string, unknown>): Effect | undefined {
@@ -28,52 +26,64 @@ function getNoteEffect(note: Record<string, unknown>): Effect | undefined {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeBeat(beat: any): SnapshotBeat {
+  const pickStroke = beat.pickStroke as number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const notes: SnapshotNote[] = (beat.isRest ? [] : (beat.notes as any[])).map(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (note: any): SnapshotNote => ({
+      string: note.string as number,
+      fret: note.fret as number,
+      effect: getNoteEffect(note),
+    }),
+  )
+  return {
+    duration: beat.duration.value as 1 | 2 | 4 | 8 | 16 | 32,
+    dotted: beat.duration.isDotted as boolean,
+    status: beat.isRest ? 'rest' : 'normal',
+    notes,
+    strumDown: pickStroke === 1 ? true : pickStroke === 2 ? false : undefined,
+    dynamic: DYNAMIC_VALUES[beat.velocity as number],
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function serializeScore(score: any): ScoreSnapshot {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tracks = score.tracks.map((track: any) => {
+  const tracks: SnapshotTrack[] = score.tracks.map((track: any) => {
+    const name = (track.name as string) || undefined
+    const tuning = Array.isArray(track.tuning) ? (track.tuning as number[]) : undefined
+
     const staff = track.staves[0]
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const measures = staff.bars.map((bar: any) => {
+    const measures: SnapshotMeasure[] = staff.bars.map((bar: any) => {
       const mb = bar.masterBar
-      const voice = bar.voices[0]
+      const keySignatureVal = mb.keySignature as number
+      const keySignature = keySignatureVal !== 0 ? keySignatureVal : undefined
+      const sectionMarker = mb.section ? ((mb.section.text as string) || undefined) : undefined
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const beats: SnapshotBeat[] = (voice.beats as any[])
+      const voices: SnapshotBeat[][] = (bar.voices as any[]).map((voice: any) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((b: any) => b.duration != null)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((beat: any): SnapshotBeat => {
-          const pickStroke = beat.pickStroke as number
+        (voice.beats as any[])
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const notes: SnapshotNote[] = (beat.isRest ? [] : (beat.notes as any[])).map(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (note: any): SnapshotNote => ({
-              string: note.string as number,
-              fret: note.fret as number,
-              effect: getNoteEffect(note),
-            }),
-          )
-
-          return {
-            duration: beat.duration.value as 1 | 2 | 4 | 8 | 16 | 32,
-            dotted: beat.duration.isDotted as boolean,
-            status: beat.isRest ? 'rest' : 'normal',
-            notes,
-            dynamic: DYNAMIC_VALUES[beat.dynamics as number] ?? 'mf',
-            strumDown: pickStroke === 2 ? true : pickStroke === 1 ? false : undefined,
-          }
-        })
+          .filter((b: any) => b.duration != null)
+          .map(serializeBeat),
+      )
 
       return {
         timeSignature: {
-          num: mb.timeSignatureNumerator as number,
-          den: mb.timeSignatureDenominator as number,
+          num: mb.timeSignature.numerator as number,
+          den: mb.timeSignature.denominator.value as number,
         },
-        beats,
+        keySignature,
+        sectionMarker,
+        voices,
+        beats: voices[0],
       }
     })
 
-    return { measures }
+    return { name, tuning, measures }
   })
 
   return { tracks }

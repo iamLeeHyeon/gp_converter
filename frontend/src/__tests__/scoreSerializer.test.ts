@@ -15,7 +15,7 @@ function makeBeat(overrides: Record<string, unknown> = {}) {
   return {
     duration: { value: 4, isDotted: false },
     isRest: false,
-    dynamics: 4,      // 4 = mf
+    velocity: 4,      // 4 = mf
     pickStroke: 0,    // 0 = None
     notes: [makeNote()],
     ...overrides,
@@ -25,9 +25,15 @@ function makeBeat(overrides: Record<string, unknown> = {}) {
 function makeScore(beats = [makeBeat()]) {
   return {
     tracks: [{
+      name: 'Guitar',
+      tuning: [64, 59, 55, 50, 45, 40],
       staves: [{
         bars: [{
-          masterBar: { timeSignatureNumerator: 4, timeSignatureDenominator: 4 },
+          masterBar: {
+            timeSignature: { numerator: 4, denominator: { value: 4 } },
+            keySignature: 0,
+            section: null,
+          },
           voices: [{ beats }],
         }],
       }],
@@ -63,13 +69,13 @@ describe('serializeScore', () => {
 
   it('strumDown=true를 직렬화한다', async () => {
     const { serializeScore } = await import('../lib/scoreSerializer')
-    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 2 })]))  // 2 = Down
+    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 1 })]))  // 1 = Down (strumDown=true)
     expect(snap.tracks[0].measures[0].beats[0].strumDown).toBe(true)
   })
 
   it('strumUp=false를 직렬화한다', async () => {
     const { serializeScore } = await import('../lib/scoreSerializer')
-    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 1 })]))  // 1 = Up
+    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 2 })]))  // 2 = Up (strumDown=false)
     expect(snap.tracks[0].measures[0].beats[0].strumDown).toBe(false)
   })
 
@@ -93,8 +99,8 @@ describe('serializeScore', () => {
 
   it('박자표를 직렬화한다', async () => {
     const score = makeScore()
-    score.tracks[0].staves[0].bars[0].masterBar.timeSignatureNumerator = 3
-    score.tracks[0].staves[0].bars[0].masterBar.timeSignatureDenominator = 4
+    score.tracks[0].staves[0].bars[0].masterBar.timeSignature.numerator = 3
+    score.tracks[0].staves[0].bars[0].masterBar.timeSignature.denominator.value = 4
     const { serializeScore } = await import('../lib/scoreSerializer')
     const snap = serializeScore(score)
     expect(snap.tracks[0].measures[0].timeSignature).toEqual({ num: 3, den: 4 })

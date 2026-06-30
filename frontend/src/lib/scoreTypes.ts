@@ -23,17 +23,27 @@ export interface SnapshotBeat {
 
 export interface SnapshotMeasure {
   timeSignature: { num: number; den: number }
-  beats: SnapshotBeat[]
+  keySignature?: number      // -7(플랫7)~7(샾7), 0=C장조; 0이면 생략
+  sectionMarker?: string     // 섹션 이름
+  voices: SnapshotBeat[][]   // voices[0]=Voice1, voices[1]=Voice2
+  beats?: SnapshotBeat[]     // voices[0] alias (하위 호환)
+}
+
+export interface SnapshotTrack {
+  name?: string
+  capo?: number              // 0-12; 0이면 생략 (GP5 생성 시 미반영, 메타데이터용)
+  tuning?: number[]          // 개방현 MIDI 값 6개 [string1..string6]
+  measures: SnapshotMeasure[]
 }
 
 export interface ScoreSnapshot {
-  tracks: Array<{ measures: SnapshotMeasure[] }>
+  tracks: SnapshotTrack[]
 }
 
 export interface NotePosition {
   trackIndex: number
   measureIndex: number    // 0-based bar index
-  voiceIndex: number      // usually 0
+  voiceIndex: number      // 0 or 1
   beatIndex: number       // 0-based beat index within voice
   noteIndex: number | null // null = beat selected (no specific note)
 }
