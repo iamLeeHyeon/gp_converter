@@ -10,6 +10,11 @@ interface EditorState {
   present: ScoreSnapshot | null
   future: ScoreSnapshot[]
   saveStatus: SaveStatus
+  // v2 추가
+  selectedTrackIndex: number
+  selectedMeasureIndex: number
+  activeVoice: 0 | 1
+  gp5Buffer: ArrayBuffer | null
 
   setSelected: (pos: NotePosition | null) => void
   setFileId: (id: string | null) => void
@@ -18,6 +23,8 @@ interface EditorState {
   undo: () => ScoreSnapshot | null
   redo: () => ScoreSnapshot | null
   clearHistory: () => void
+  // v2 추가 액션
+  setGp5Buffer: (buf: ArrayBuffer | null) => void
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -27,6 +34,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   present: null,
   future: [],
   saveStatus: 'idle',
+  // v2 추가
+  selectedTrackIndex: 0,
+  selectedMeasureIndex: 0,
+  activeVoice: 0 as 0 | 1,
+  gp5Buffer: null,
 
   setSelected: (pos) => set({ selected: pos }),
   setFileId: (id) => set({ fileId: id }),
@@ -66,4 +78,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   clearHistory: () =>
     set({ past: [], present: null, future: [], selected: null, saveStatus: 'idle' }),
+
+  setGp5Buffer: (buf) => set({ gp5Buffer: buf }),
 }))

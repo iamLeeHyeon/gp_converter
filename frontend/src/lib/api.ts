@@ -76,6 +76,15 @@ export const api = {
     })
   },
 
+  async getGP5Buffer(fileId: string): Promise<ArrayBuffer> {
+    const res = await fetch(`/files/${fileId}/download`, { headers: authHeaders() })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.detail ?? `HTTP ${res.status}`)
+    }
+    return res.arrayBuffer()
+  },
+
   async downloadGP5(fileId: string, filename: string): Promise<void> {
     await downloadBlob(`/files/${fileId}/download`, filename)
   },
