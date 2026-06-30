@@ -31,7 +31,7 @@ from typing import List, Optional, Tuple
 import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
-from guitarpro.models import BeatStatus, BeatStrokeDirection, SlideType
+from guitarpro.models import BeatStatus, BeatStrokeDirection, KeySignature, SlideType
 
 logger = logging.getLogger(__name__)
 
@@ -385,7 +385,9 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
         expected = (ts.get("num", 4) / ts.get("den", 4)) * 64
         accumulated = 0.0
 
-        for bdata in mdata.get("beats", []):
+        voices_v2 = mdata.get("voices")
+        beats_data = (voices_v2[0] if voices_v2 else None) or mdata.get("beats", [])
+        for bdata in beats_data:
             dur_val = bdata.get("duration", 4)
             is_dotted = bdata.get("dotted", False)
             base = _DUR_UNITS.get(dur_val, 16)
@@ -470,6 +472,10 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
     first_mh.number = 1
     first_mh.timeSignature.numerator = ts0.get("num", 4)
     first_mh.timeSignature.denominator.value = ts0.get("den", 4)
+    first_mh.keySignature = KeySignature(measures_data[0].get("keySignature", 0), 0)
+    _marker = measures_data[0].get("sectionMarker")
+    if _marker:
+        first_mh.marker = gpm.Marker(title=_marker)
     _fill_snap(track.measures[0], measures_data[0])
 
     start = first_mh.start + first_mh.length
@@ -480,6 +486,10 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
         mh.start = start
         mh.timeSignature.numerator = ts.get("num", 4)
         mh.timeSignature.denominator.value = ts.get("den", 4)
+        mh.keySignature = KeySignature(mdata.get("keySignature", 0), 0)
+        _loop_marker = mdata.get("sectionMarker")
+        if _loop_marker:
+            mh.marker = gpm.Marker(title=_loop_marker)
         song.measureHeaders.append(mh)
         m = gpm.Measure(track, mh)
         _fill_snap(m, mdata)

@@ -1,0 +1,70 @@
+import os
+import pytest
+import guitarpro as gpm
+
+from app.pipeline.token_to_gp import snapshot_to_gp5
+
+
+def _snap_1track_1measure(**measure_kwargs):
+    """단일 트랙, 단일 마디 스냅샷 생성 헬퍼."""
+    base = {
+        "timeSignature": {"num": 4, "den": 4},
+        "voices": [[
+            {"duration": 4, "dotted": False, "status": "normal",
+             "dynamic": "mf", "notes": [{"string": 1, "fret": 0}]},
+        ]],
+    }
+    base.update(measure_kwargs)
+    return {"tracks": [{"measures": [base]}]}
+
+
+class TestSnapshotV2MeasureAttrs:
+    def test_keySignature_1_written(self, tmp_path):
+        """keySignature=1 → GP5 MeasureHeader.keySignature value[0]=1 (1 sharp = GMajor)."""
+        snap = _snap_1track_1measure(keySignature=1)
+        path = str(tmp_path / "key1.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        assert song.measureHeaders[0].keySignature.value[0] == 1
+
+    def test_keySignature_default_0(self, tmp_path):
+        """keySignature 없으면 0(C장조)."""
+        snap = _snap_1track_1measure()
+        path = str(tmp_path / "key0.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        assert song.measureHeaders[0].keySignature.value[0] == 0
+
+    def test_sectionMarker_written(self, tmp_path):
+        """sectionMarker='Intro' → GP5 MeasureHeader.marker.title='Intro'."""
+        snap = _snap_1track_1measure(sectionMarker="Intro")
+        path = str(tmp_path / "marker.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        assert song.measureHeaders[0].marker is not None
+        assert song.measureHeaders[0].marker.title == "Intro"
+
+    def test_no_sectionMarker_no_marker(self, tmp_path):
+        """sectionMarker 없으면 marker=None."""
+        snap = _snap_1track_1measure()
+        path = str(tmp_path / "nomarker.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        assert song.measureHeaders[0].marker is None
+
+    def test_voices_fallback_to_beats(self, tmp_path):
+        """v1 호환: voices 없고 beats 있으면 정상 변환."""
+        snap = {"tracks": [{"measures": [{
+            "timeSignature": {"num": 4, "den": 4},
+            "beats": [
+                {"duration": 4, "dotted": False, "status": "normal",
+                 "dynamic": "mf", "notes": [{"string": 1, "fret": 5}]},
+            ],
+        }]}]}
+        path = str(tmp_path / "v1compat.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        note_ons = [n for t in song.tracks for m in t.measures
+                    for v in m.voices for b in v.beats
+                    for n in b.notes if n.type == gpm.NoteType.normal]
+        assert len(note_ons) >= 1
