@@ -7,7 +7,8 @@ export default function OAuthCallback() {
   const setToken = useAuthStore((s) => s.setToken)
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
+    const hash = window.location.hash.slice(1) // '#' 제거
+    const params = new URLSearchParams(hash)
     const access = params.get('access_token')
     const refresh = params.get('refresh_token')
     if (access && refresh) {

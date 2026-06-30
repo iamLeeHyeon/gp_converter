@@ -1,8 +1,9 @@
 import os
 import jwt
+import secrets
 import httpx
 from urllib.parse import urlencode
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -29,17 +30,24 @@ _BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 @router.get("/google")
 def google_login():
+    state = secrets.token_urlsafe(16)
     params = urlencode({
         "response_type": "code",
         "client_id": _GOOGLE_ID,
         "redirect_uri": f"{_BACKEND}/auth/google/callback",
         "scope": "openid email profile",
+        "state": state,
     })
-    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+    response = RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+    response.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=600)
+    return response
 
 
 @router.get("/google/callback")
-async def google_callback(code: str, db: Session = Depends(get_db)):
+async def google_callback(request: Request, code: str, state: str = "", db: Session = Depends(get_db)):
+    stored_state = request.cookies.get("oauth_state", "")
+    if not stored_state or stored_state != state:
+        raise HTTPException(status_code=400, detail="invalid state")
     async with httpx.AsyncClient() as c:
         tok_resp = await c.post("https://oauth2.googleapis.com/token", data={
             "code": code, "client_id": _GOOGLE_ID, "client_secret": _GOOGLE_SECRET,
@@ -67,21 +75,28 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
 
     access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)
-    return RedirectResponse(f"{_FRONTEND}/auth/callback?access_token={access}&refresh_token={refresh}")
+    return RedirectResponse(f"{_FRONTEND}/auth/callback#access_token={access}&refresh_token={refresh}")
 
 
 @router.get("/github")
 def github_login():
+    state = secrets.token_urlsafe(16)
     params = urlencode({
         "client_id": _GITHUB_ID,
         "redirect_uri": f"{_BACKEND}/auth/github/callback",
         "scope": "user:email",
+        "state": state,
     })
-    return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
+    response = RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
+    response.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=600)
+    return response
 
 
 @router.get("/github/callback")
-async def github_callback(code: str, db: Session = Depends(get_db)):
+async def github_callback(request: Request, code: str, state: str = "", db: Session = Depends(get_db)):
+    stored_state = request.cookies.get("oauth_state", "")
+    if not stored_state or stored_state != state:
+        raise HTTPException(status_code=400, detail="invalid state")
     async with httpx.AsyncClient() as c:
         tok_resp = await c.post(
             "https://github.com/login/oauth/access_token",
@@ -120,7 +135,7 @@ async def github_callback(code: str, db: Session = Depends(get_db)):
 
     access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)
-    return RedirectResponse(f"{_FRONTEND}/auth/callback?access_token={access}&refresh_token={refresh}")
+    return RedirectResponse(f"{_FRONTEND}/auth/callback#access_token={access}&refresh_token={refresh}")
 
 
 class RefreshRequest(BaseModel):

@@ -20,7 +20,7 @@ beforeEach(() => {
 
 afterEach(() => {
   Object.defineProperty(window, 'location', {
-    value: { search: '', href: '' },
+    value: { hash: '', href: '' },
     writable: true,
     configurable: true,
   })
@@ -28,7 +28,7 @@ afterEach(() => {
 
 test('토큰 있음: setToken 호출 및 /로 이동', () => {
   Object.defineProperty(window, 'location', {
-    value: { search: '?access_token=abc&refresh_token=xyz', href: '' },
+    value: { hash: '#access_token=abc&refresh_token=xyz', href: '' },
     writable: true,
     configurable: true,
   })
@@ -40,7 +40,7 @@ test('토큰 있음: setToken 호출 및 /로 이동', () => {
 
 test('토큰 없음: /login으로 이동', () => {
   Object.defineProperty(window, 'location', {
-    value: { search: '', href: '' },
+    value: { hash: '', href: '' },
     writable: true,
     configurable: true,
   })
