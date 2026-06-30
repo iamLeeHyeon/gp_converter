@@ -48,4 +48,35 @@ describe('EditPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /삭제|delete|×/i }))
     expect(onEditNote).toHaveBeenCalledWith({ type: 'deleteNote' })
   })
+
+  it('다이나믹 버튼 클릭 시 onEditBeat를 호출한다', async () => {
+    const onEditBeat = vi.fn()
+    const user = userEvent.setup()
+    render(<EditPanel selectedPosition={POS} currentBeat={BEAT} currentNote={NOTE} onEditBeat={onEditBeat} onEditNote={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'f' }))
+    expect(onEditBeat).toHaveBeenCalledWith({ type: 'dynamic', value: 'f' })
+  })
+
+  it('이펙트 버튼 클릭 시 onEditNote를 호출한다', async () => {
+    const onEditNote = vi.fn()
+    const user = userEvent.setup()
+    render(<EditPanel selectedPosition={POS} currentBeat={BEAT} currentNote={NOTE} onEditBeat={vi.fn()} onEditNote={onEditNote} />)
+    // 이펙트 섹션 내 '없음' 버튼 (스트럼 섹션에도 같은 이름 버튼이 있으므로 getAllByRole 사용)
+    const noneButtons = screen.getAllByRole('button', { name: /없음/i })
+    // 이펙트 섹션의 '없음' 버튼은 마지막 '없음' 버튼
+    await user.click(noneButtons[noneButtons.length - 1])
+    expect(onEditNote).toHaveBeenCalledWith({ type: 'effect', value: null })
+  })
+
+  it('fretInput이 currentNote.fret 변경 시 동기화된다', () => {
+    const { rerender } = render(
+      <EditPanel selectedPosition={POS} currentBeat={BEAT} currentNote={NOTE} onEditBeat={vi.fn()} onEditNote={vi.fn()} />
+    )
+    expect((screen.getByLabelText(/프렛/i) as HTMLInputElement).value).toBe('5')
+
+    rerender(
+      <EditPanel selectedPosition={POS} currentBeat={BEAT} currentNote={{ string: 1, fret: 12 }} onEditBeat={vi.fn()} onEditNote={vi.fn()} />
+    )
+    expect((screen.getByLabelText(/프렛/i) as HTMLInputElement).value).toBe('12')
+  })
 })

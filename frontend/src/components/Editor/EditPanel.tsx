@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { NotePosition, Dynamic, Effect } from '../../lib/scoreTypes'
 import type { EditPayload } from '../../lib/scoreApplier'
 
@@ -32,6 +32,10 @@ const EFFECTS: Array<{ value: Effect; label: string }> = [
 
 export default function EditPanel({ selectedPosition, currentBeat, currentNote, onEditBeat, onEditNote }: Props) {
   const [fretInput, setFretInput] = useState<string>(String(currentNote?.fret ?? ''))
+
+  useEffect(() => {
+    setFretInput(String(currentNote?.fret ?? ''))
+  }, [currentNote?.fret])
 
   if (!selectedPosition || !currentBeat) {
     return (
@@ -125,7 +129,7 @@ export default function EditPanel({ selectedPosition, currentBeat, currentNote, 
               type="number"
               min={0}
               max={24}
-              value={fretInput !== String(currentNote.fret) ? fretInput : String(currentNote.fret)}
+              value={fretInput}
               onChange={(e) => setFretInput(e.target.value)}
               onBlur={handleFretCommit}
               onKeyDown={(e) => { if (e.key === 'Enter') handleFretCommit() }}
