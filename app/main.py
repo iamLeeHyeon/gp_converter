@@ -20,6 +20,7 @@ from app.models import User, File as DbFile
 from app.routers.auth import router as auth_router
 from app.routers.jobs_sse import router as jobs_sse_router
 from app.routers.files import router as files_router
+from app.routers.edit import router as edit_router
 from app.worker import process_job
 
 # DB 테이블 자동 생성
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(jobs_sse_router)
 app.include_router(files_router)
+app.include_router(edit_router)
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
 
