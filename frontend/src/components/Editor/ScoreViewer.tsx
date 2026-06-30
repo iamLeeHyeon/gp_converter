@@ -8,6 +8,7 @@ import { useSyncFile } from '../../lib/useSyncFile'
 import EditPanel from './EditPanel'
 import ExportMenu from './ExportMenu'
 import StructurePanel from './StructurePanel'
+import TrackPanel from './TrackPanel'
 import type { NotePosition, Dynamic, Effect } from '../../lib/scoreTypes'
 
 interface Props {
@@ -19,8 +20,10 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null)
   const [playing, setPlaying] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [leftTab, setLeftTab] = useState<'files' | 'tracks'>('files')
 
   const { selected, fileId, present, saveStatus, setSelected, pushSnapshot, undo, redo } = useEditorStore()
+  const storeGp5Buffer = useEditorStore(s => s.gp5Buffer)
 
   // 현재 선택된 beat/note 정보 추출
   const currentBeat = (() => {
@@ -128,6 +131,12 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
     return () => window.removeEventListener('keydown', handler)
   }, [undo, redo, selected, commitEdit])
 
+  // 구조 편집 후 store gp5Buffer 변경 시 alphaTab 리로드
+  useEffect(() => {
+    if (!storeGp5Buffer || !apiRef.current) return
+    apiRef.current.load(storeGp5Buffer)
+  }, [storeGp5Buffer])
+
   if (!gp5Buffer) {
     return (
       <div style={{ padding: 32, textAlign: 'center', color: '#666' }}>
@@ -138,6 +147,24 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
+      {/* 좌측 탭 패널: 파일 | 트랙 */}
+      <aside style={{ width: 200, borderRight: '1px solid #ddd', overflow: 'auto', flexShrink: 0 }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid #ddd' }}>
+          <button
+            style={{ flex: 1, fontWeight: leftTab === 'files' ? 'bold' : undefined }}
+            onClick={() => setLeftTab('files')}
+          >파일</button>
+          <button
+            style={{ flex: 1, fontWeight: leftTab === 'tracks' ? 'bold' : undefined }}
+            onClick={() => setLeftTab('tracks')}
+          >트랙</button>
+        </div>
+        {leftTab === 'files'
+          ? <div style={{ padding: 8, fontSize: 12, color: '#666' }}>파일 목록은 왼쪽 사이드바를 이용하세요</div>
+          : <TrackPanel />
+        }
+      </aside>
+
       {/* 악보 영역 */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '8px 0', display: 'flex', gap: 8, alignItems: 'center' }}>
