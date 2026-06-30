@@ -13,7 +13,7 @@ function MainPage() {
   const { token, logout } = useAuthStore()
   const { setFileId, clearHistory } = useEditorStore()
 
-  const handleComplete = (jobId: string, buf: ArrayBuffer, fileId?: string | null) => {
+  const handleComplete = (_jobId: string, buf: ArrayBuffer, fileId?: string | null) => {
     clearHistory()
     setGp5Buffer(buf)
     setFileId(fileId ?? null)

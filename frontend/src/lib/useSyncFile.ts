@@ -5,7 +5,7 @@ import type { ScoreSnapshot } from './scoreTypes'
 
 export function useSyncFile(fileId: string | null, snapshot: ScoreSnapshot | null): void {
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined!)
 
   useEffect(() => {
     if (!fileId || !snapshot) return
