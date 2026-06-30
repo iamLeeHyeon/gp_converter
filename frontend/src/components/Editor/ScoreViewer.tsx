@@ -6,6 +6,7 @@ import { serializeScore } from '../../lib/scoreSerializer'
 import { applyEdit, applySnapshot, type EditPayload } from '../../lib/scoreApplier'
 import { useSyncFile } from '../../lib/useSyncFile'
 import EditPanel from './EditPanel'
+import ExportMenu from './ExportMenu'
 import type { NotePosition, Dynamic, Effect } from '../../lib/scoreTypes'
 
 interface Props {
@@ -142,19 +143,10 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
           <button onClick={() => apiRef.current?.playPause()} disabled={!loaded}>
             {playing ? '일시정지' : '재생'}
           </button>
-          <button
-            onClick={() => {
-              const blob = new Blob([gp5Buffer], { type: 'application/octet-stream' })
-              const href = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = href
-              a.download = 'score.gp5'
-              a.click()
-              URL.revokeObjectURL(href)
-            }}
-          >
-            GP5 다운로드
-          </button>
+          <ExportMenu
+            fileId={fileId}
+            onPrint={() => apiRef.current?.print()}
+          />
           <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
             {saveStatus === 'saving' ? '저장 중…'
               : saveStatus === 'saved' ? '저장됨'

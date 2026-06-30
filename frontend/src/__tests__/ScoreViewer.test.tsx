@@ -21,6 +21,12 @@ vi.mock('../store/editorStore', () => ({
   }),
 }))
 vi.mock('../lib/useSyncFile', () => ({ useSyncFile: vi.fn() }))
+vi.mock('../lib/api', () => ({
+  api: {
+    downloadGP5: vi.fn().mockResolvedValue(undefined),
+    downloadMIDI: vi.fn().mockResolvedValue(undefined),
+  },
+}))
 
 import ScoreViewer from '../components/Editor/ScoreViewer'
 
@@ -32,4 +38,11 @@ test('gp5Buffer 없으면 안내 문구 표시', () => {
 test('gp5Buffer 있으면 재생 버튼 표시', () => {
   render(<ScoreViewer gp5Buffer={new ArrayBuffer(8)} />)
   expect(screen.getByRole('button', { name: /재생/i })).toBeInTheDocument()
+})
+
+test('gp5Buffer 있으면 GP5/PDF/MIDI 버튼 표시', () => {
+  render(<ScoreViewer gp5Buffer={new ArrayBuffer(8)} />)
+  expect(screen.getByRole('button', { name: /GP5/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /PDF/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /MIDI/i })).toBeInTheDocument()
 })
