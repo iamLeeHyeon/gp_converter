@@ -378,15 +378,11 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
     track = song.tracks[0]
     track.name = "Guitar"
 
-    def _fill_snap(measure: gpm.Measure, mdata: dict) -> None:
-        voice = measure.voices[0]
+    def _fill_voice_beats(voice: gpm.Voice, beats_data: list, expected: float) -> None:
+        """beats_data 리스트를 voice 객체에 채운다."""
         voice.beats = []
-        ts = mdata.get("timeSignature", {})
-        expected = (ts.get("num", 4) / ts.get("den", 4)) * 64
         accumulated = 0.0
 
-        voices_v2 = mdata.get("voices")
-        beats_data = (voices_v2[0] if voices_v2 else None) or mdata.get("beats", [])
         for bdata in beats_data:
             dur_val = bdata.get("duration", 4)
             is_dotted = bdata.get("dotted", False)
@@ -467,6 +463,18 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
             rest.notes = []
             voice.beats.append(rest)
 
+    def _fill_snap(measure: gpm.Measure, mdata: dict) -> None:
+        ts = mdata.get("timeSignature", {})
+        expected = (ts.get("num", 4) / ts.get("den", 4)) * 64
+
+        voices_v2 = mdata.get("voices")
+        beats_v0 = (voices_v2[0] if voices_v2 else None) or mdata.get("beats", [])
+        _fill_voice_beats(measure.voices[0], beats_v0, expected)
+
+        # voices[1] 지원
+        if voices_v2 and len(voices_v2) > 1 and voices_v2[1]:
+            _fill_voice_beats(measure.voices[1], voices_v2[1], expected)
+
     ts0 = measures_data[0].get("timeSignature", {})
     first_mh = song.measureHeaders[0]
     first_mh.number = 1
@@ -495,6 +503,32 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
         _fill_snap(m, mdata)
         track.measures.append(m)
         start += mh.length
+
+    # 첫 번째 트랙 튜닝 설정
+    tuning_0 = tracks_data[0].get("tuning")
+    if tuning_0 and len(tuning_0) == 6:
+        for i, val in enumerate(tuning_0[:6]):
+            track.strings[i].value = val
+
+    # 추가 트랙 (tracks[1:])
+    _default_tuning = [64, 59, 55, 50, 45, 40]
+    for ti, track_data in enumerate(tracks_data[1:], start=1):
+        tuning = track_data.get("tuning", _default_tuning)
+        if len(tuning) < 6:
+            tuning = tuning + _default_tuning[len(tuning):]
+        new_strings = [gpm.GuitarString(number=j + 1, value=tuning[j]) for j in range(6)]
+
+        new_track = gpm.Track(song, number=ti + 1, strings=new_strings)
+        new_track.name = track_data.get("name", f"Track {ti + 1}")
+
+        track_measures_data = track_data.get("measures", [])
+        for mi, mh in enumerate(song.measureHeaders):
+            mdata = track_measures_data[mi] if mi < len(track_measures_data) else {}
+            m = gpm.Measure(new_track, mh)
+            _fill_snap(m, mdata)
+            new_track.measures.append(m)
+
+        song.tracks.append(new_track)
 
     guitarpro.write(song, out_path)
     return out_path

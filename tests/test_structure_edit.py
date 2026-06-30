@@ -68,3 +68,61 @@ class TestSnapshotV2MeasureAttrs:
                     for v in m.voices for b in v.beats
                     for n in b.notes if n.type == gpm.NoteType.normal]
         assert len(note_ons) >= 1
+
+
+class TestSnapshotV2MultiTrack:
+    def test_two_tracks_written(self, tmp_path):
+        """2개 트랙 스냅샷 → GP5에 2개 트랙."""
+        snap = {
+            "tracks": [
+                {"name": "Guitar", "measures": [{
+                    "timeSignature": {"num": 4, "den": 4},
+                    "voices": [[{"duration": 4, "dotted": False, "status": "normal",
+                                  "dynamic": "mf", "notes": [{"string": 1, "fret": 0}]}]],
+                }]},
+                {"name": "Bass", "measures": [{
+                    "timeSignature": {"num": 4, "den": 4},
+                    "voices": [[{"duration": 4, "dotted": False, "status": "normal",
+                                  "dynamic": "mf", "notes": [{"string": 1, "fret": 3}]}]],
+                }]},
+            ]
+        }
+        path = str(tmp_path / "two_tracks.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        assert len(song.tracks) == 2
+        assert song.tracks[1].name == "Bass"
+
+    def test_drop_d_tuning_applied(self, tmp_path):
+        """Drop D 튜닝 → 6번현 38(D2) 저장."""
+        snap = {"tracks": [{
+            "name": "Guitar",
+            "tuning": [64, 59, 55, 50, 45, 38],
+            "measures": [{"timeSignature": {"num": 4, "den": 4},
+                          "voices": [[{"duration": 4, "dotted": False, "status": "rest",
+                                        "dynamic": "mf", "notes": []}]]}],
+        }]}
+        path = str(tmp_path / "dropd.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        # GuitarString.value: string 1=index0(high E=64), string 6=index5(low=38)
+        assert song.tracks[0].strings[5].value == 38
+
+    def test_voice1_beats_written(self, tmp_path):
+        """voices[1] beats → GP5 measure voice[1]에 음표 존재."""
+        snap = {"tracks": [{"measures": [{
+            "timeSignature": {"num": 4, "den": 4},
+            "voices": [
+                [{"duration": 4, "dotted": False, "status": "normal",
+                   "dynamic": "mf", "notes": [{"string": 1, "fret": 0}]}],
+                [{"duration": 4, "dotted": False, "status": "normal",
+                   "dynamic": "mf", "notes": [{"string": 2, "fret": 3}]}],
+            ],
+        }]}]}
+        path = str(tmp_path / "voice1.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        # voice[1]에 음표 확인
+        v1_notes = [n for b in song.tracks[0].measures[0].voices[1].beats
+                    for n in b.notes if b.status == gpm.BeatStatus.normal]
+        assert len(v1_notes) >= 1
