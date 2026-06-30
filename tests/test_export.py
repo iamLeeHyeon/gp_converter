@@ -1,5 +1,10 @@
+import copy
 import os
 import pytest
+import guitarpro
+import guitarpro.models as gpm
+from guitarpro import Beat, Note, NoteType
+from guitarpro.models import BeatStatus
 import mido
 from fastapi.testclient import TestClient
 from unittest.mock import patch
@@ -159,3 +164,155 @@ class TestMidiExport:
         resp = client.get("/files/f5/export/midi",
                           headers={"Authorization": f"Bearer {_tok('u6')}"})
         assert resp.status_code == 403
+
+
+# ── Bug Fix Tests ────────────────────────────────────────────────────────────
+
+def _make_gp5_with_tie(tmp_path) -> str:
+    """beat1=normal + beat2=tie 인 GP5 파일 생성."""
+    song = guitarpro.Song()
+    track = song.tracks[0]
+    voice = track.measures[0].voices[0]
+    voice.beats = []
+
+    b1 = Beat(voice)
+    b1.duration = gpm.Duration(); b1.duration.value = 4
+    b1.status = BeatStatus.normal
+    n1 = Note(b1); n1.string = 1; n1.value = 5; n1.type = NoteType.normal
+    b1.notes = [n1]
+
+    b2 = Beat(voice)
+    b2.duration = gpm.Duration(); b2.duration.value = 4
+    b2.status = BeatStatus.normal
+    n2 = Note(b2); n2.string = 1; n2.value = 5; n2.type = NoteType.tie
+    b2.notes = [n2]
+
+    voice.beats = [b1, b2]
+    path = str(tmp_path / "tie.gp5")
+    guitarpro.write(song, path)
+    return path
+
+
+def _make_gp5_10_tracks(tmp_path) -> str:
+    """10개 트랙(각 트랙에 음표 1개)인 GP5 파일 생성."""
+    song = guitarpro.Song()
+    base_track = song.tracks[0]
+
+    # 첫 트랙 음표 추가
+    v0 = base_track.measures[0].voices[0]
+    v0.beats = []
+    b = Beat(v0); b.duration = gpm.Duration(); b.duration.value = 4
+    b.status = BeatStatus.normal
+    n = Note(b); n.string = 1; n.value = 0; n.type = NoteType.normal
+    b.notes = [n]; v0.beats = [b]
+
+    # 트랙 9개 추가 (총 10개)
+    for i in range(1, 10):
+        t = copy.deepcopy(base_track)
+        t.number = i + 1
+        song.tracks.append(t)
+
+    path = str(tmp_path / "tracks10.gp5")
+    guitarpro.write(song, path)
+    return path
+
+
+def _make_gp5_short_voice0(tmp_path) -> str:
+    """voice[0]이 2박만 있는 4/4 마디 + 2번째 마디에 음표 있는 GP5."""
+    song = guitarpro.Song()
+    track = song.tracks[0]
+    mh0 = song.measureHeaders[0]
+    mh0.timeSignature.numerator = 4
+    mh0.timeSignature.denominator.value = 4
+
+    measure1 = track.measures[0]
+    v0 = measure1.voices[0]
+    v0.beats = []
+    for _ in range(2):  # 2박만 — voice[0] 합 = 1920 ticks (< 3840)
+        rb = Beat(v0); rb.status = BeatStatus.rest
+        rb.duration = gpm.Duration(); rb.duration.value = 4
+        rb.notes = []; v0.beats.append(rb)
+
+    # 2번째 마디: measure header가 올바른 start 보유
+    mh1 = gpm.MeasureHeader()
+    mh1.number = 2
+    mh1.start = mh0.start + mh0.length  # 올바른 start
+    mh1.timeSignature.numerator = 4
+    mh1.timeSignature.denominator.value = 4
+    song.measureHeaders.append(mh1)
+
+    m2 = gpm.Measure(track, mh1)
+    v1 = m2.voices[0]
+    bm = Beat(v1); bm.duration = gpm.Duration(); bm.duration.value = 4
+    bm.status = BeatStatus.normal
+    nm = Note(bm); nm.string = 1; nm.value = 0; nm.type = NoteType.normal
+    bm.notes = [nm]; v1.beats = [bm]
+    track.measures.append(m2)
+
+    path = str(tmp_path / "short_voice0.gp5")
+    guitarpro.write(song, path)
+    return path
+
+
+def _note_off_ticks(mid: mido.MidiFile) -> dict[int, int]:
+    """pitch → 마지막 note_off 절대 tick 맵."""
+    result = {}
+    for track in mid.tracks:
+        abs_t = 0
+        for msg in track:
+            abs_t += msg.time
+            if msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                result[msg.note] = abs_t
+    return result
+
+
+def _note_on_events(mid: mido.MidiFile) -> list[tuple[int, int, int]]:
+    """(pitch, abs_tick, channel) 리스트."""
+    events = []
+    for track in mid.tracks:
+        abs_t = 0
+        for msg in track:
+            abs_t += msg.time
+            if msg.type == 'note_on' and msg.velocity > 0:
+                events.append((msg.note, abs_t, msg.channel))
+    return events
+
+
+class TestMidiExportBugFixes:
+    def test_tie_note_extends_note_off(self, tmp_path):
+        """타이 음표: note_off가 1920 tick(2박) 위치여야 함(960 아님)."""
+        from app.pipeline.midi_export import gp5_to_midi
+
+        gp5_path = _make_gp5_with_tie(tmp_path)
+        midi_path = str(tmp_path / "tie.mid")
+        gp5_to_midi(gp5_path, midi_path)
+
+        mid = mido.MidiFile(midi_path)
+        offs = _note_off_ticks(mid)
+        assert offs.get(69) == 1920, f"note_off(69) 예상 1920, 실제 {offs.get(69)}"
+
+    def test_channel_9_skipped(self, tmp_path):
+        """10번째 트랙(ti=9)은 GM 퍼커션 채널 9를 피해 채널 10을 써야 함."""
+        from app.pipeline.midi_export import gp5_to_midi
+
+        gp5_path = _make_gp5_10_tracks(tmp_path)
+        midi_path = str(tmp_path / "ch9.mid")
+        gp5_to_midi(gp5_path, midi_path)
+
+        mid = mido.MidiFile(midi_path)
+        channels_used = {msg.channel for track in mid.tracks for msg in track
+                         if hasattr(msg, 'channel')}
+        assert 9 not in channels_used, f"채널 9가 사용됨: {channels_used}"
+
+    def test_multivoice_measure_start_uses_header_length(self, tmp_path):
+        """voice[0]이 짧아도 2번째 마디 음표는 3840 tick(4/4 마디 전체) 이후여야 함."""
+        from app.pipeline.midi_export import gp5_to_midi
+
+        gp5_path = _make_gp5_short_voice0(tmp_path)
+        midi_path = str(tmp_path / "voice0.mid")
+        gp5_to_midi(gp5_path, midi_path)
+
+        mid = mido.MidiFile(midi_path)
+        events = _note_on_events(mid)
+        ticks = [t for _, t, _ in events]
+        assert 3840 in ticks, f"마디 2 음표가 3840 tick에 없음: {ticks}"
