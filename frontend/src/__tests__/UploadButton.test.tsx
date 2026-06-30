@@ -9,9 +9,9 @@ vi.mock('../lib/api', () => ({
 vi.mock('../lib/sse', () => ({
   connectSSE: vi.fn().mockImplementation((_id, _onP, onDone) => { onDone(); return () => {} }),
 }))
-vi.spyOn(global, 'fetch').mockResolvedValue({
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
   ok: true, arrayBuffer: async () => new ArrayBuffer(8),
-} as Response)
+} as Response))
 
 test('파일 선택 후 업로드 버튼 활성화', async () => {
   render(<UploadButton onComplete={vi.fn()} />)

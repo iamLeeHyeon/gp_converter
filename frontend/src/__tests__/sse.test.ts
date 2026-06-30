@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { connectSSE, ProgressEvent } from '../lib/sse'
+import { connectSSE } from '../lib/sse'
+import type { ProgressEvent } from '../lib/sse'
 
 // jsdom은 EventSource 미지원 → 모킹
 class MockEventSource {

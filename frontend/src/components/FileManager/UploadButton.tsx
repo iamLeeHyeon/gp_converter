@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { api } from '../../lib/api'
-import { connectSSE, ProgressEvent } from '../../lib/sse'
+import { connectSSE, type ProgressEvent } from '../../lib/sse'
 import ProgressBar from '../Editor/ProgressBar'
 
 interface Props {

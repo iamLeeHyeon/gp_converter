@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { api, FileRecord } from '../lib/api'
+import { api, type FileRecord } from '../lib/api'
 
 interface FileState {
   files: FileRecord[]
