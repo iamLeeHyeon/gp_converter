@@ -304,3 +304,117 @@ def test_token_texts_to_gp5_empty_raises(tmp_path):
 
     with pytest.raises(ValueError, match="마디"):
         token_texts_to_gp5([""], str(tmp_path / "out.gp5"))
+
+
+# ---------------------------------------------------------------------------
+# snapshot_to_gp5() 테스트
+# ---------------------------------------------------------------------------
+
+SIMPLE_SNAPSHOT = {
+    "tracks": [{
+        "measures": [{
+            "timeSignature": {"num": 4, "den": 4},
+            "beats": [
+                {
+                    "duration": 4, "dotted": False, "status": "normal",
+                    "dynamic": "mf", "strumDown": True,
+                    "notes": [
+                        {"string": 1, "fret": 7, "effect": None},
+                        {"string": 2, "fret": 8},
+                    ],
+                },
+                {
+                    "duration": 4, "dotted": False, "status": "normal",
+                    "dynamic": "f",
+                    "notes": [{"string": 1, "fret": 5, "effect": "hammer-on"}],
+                },
+                {
+                    "duration": 4, "dotted": False, "status": "rest",
+                    "dynamic": "mf", "notes": [],
+                },
+                {
+                    "duration": 4, "dotted": False, "status": "normal",
+                    "dynamic": "mp",
+                    "notes": [{"string": 3, "fret": 0, "effect": "ghost"}],
+                },
+            ],
+        }]
+    }]
+}
+
+REST_SNAPSHOT = {
+    "tracks": [{"measures": [{"timeSignature": {"num": 4, "den": 4},
+        "beats": [{"duration": 1, "dotted": False, "status": "rest", "notes": []}]}]}]
+}
+
+
+def test_snapshot_to_gp5_creates_file(tmp_path):
+    """snapshot_to_gp5가 파일을 생성해야 한다."""
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    out = str(tmp_path / "out.gp5")
+    result = snapshot_to_gp5(SIMPLE_SNAPSHOT, out)
+    assert result == out
+    assert (tmp_path / "out.gp5").exists()
+    assert (tmp_path / "out.gp5").stat().st_size > 0
+
+
+def test_snapshot_to_gp5_parseable(tmp_path):
+    """생성된 GP5가 guitarpro.parse로 재파싱 가능해야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    out = str(tmp_path / "out.gp5")
+    snapshot_to_gp5(SIMPLE_SNAPSHOT, out)
+    song = guitarpro.parse(out)
+    assert len(song.tracks) >= 1
+    assert len(song.tracks[0].measures) == 1
+
+
+def test_snapshot_to_gp5_note_fret(tmp_path):
+    """첫 비트 첫 음표 프렛이 7이어야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    out = str(tmp_path / "out.gp5")
+    snapshot_to_gp5(SIMPLE_SNAPSHOT, out)
+    song = guitarpro.parse(out)
+    beat = song.tracks[0].measures[0].voices[0].beats[0]
+    frets = {n.value for n in beat.notes}
+    assert 7 in frets
+    assert 8 in frets
+
+
+def test_snapshot_to_gp5_rest(tmp_path):
+    """쉼표 스냅샷도 정상 변환돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    out = str(tmp_path / "out.gp5")
+    snapshot_to_gp5(REST_SNAPSHOT, out)
+    song = guitarpro.parse(out)
+    assert song is not None
+
+
+def test_snapshot_to_gp5_no_string_reversal(tmp_path):
+    """GP 컨벤션 스트링 번호 — 반전 없이 그대로 저장돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    snap = {"tracks": [{"measures": [{"timeSignature": {"num": 4, "den": 4},
+        "beats": [{"duration": 4, "dotted": False, "status": "normal",
+                   "dynamic": "mf",
+                   "notes": [{"string": 1, "fret": 5}]}]}]}]}
+    out = str(tmp_path / "out.gp5")
+    snapshot_to_gp5(snap, out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.string == 1
+
+
+def test_snapshot_to_gp5_empty_raises(tmp_path):
+    """트랙 없으면 ValueError가 발생해야 한다."""
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    with pytest.raises(ValueError, match="트랙"):
+        snapshot_to_gp5({"tracks": []}, str(tmp_path / "out.gp5"))

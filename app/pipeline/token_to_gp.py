@@ -178,6 +178,8 @@ def _parse_token_texts(token_texts: List[str]) -> List[_MeasureData]:
                     )
                 current_beat = _BeatData()
                 tokens = line.split()[1:]
+                if not tokens:
+                    logger.warning("bare BEAT 토큰 (DUR 없음) → 기본 4분음표 쉼표로 처리")
                 for token in tokens:
                     if token.startswith("DUR_"):
                         val = token[4:]
@@ -247,8 +249,8 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
             units = _beat_units(bdata)
             if accumulated + units > expected + 0.01:
                 # 마디 용량 초과 — 해당 비트부터 버림
-                logger.debug("마디 용량 초과 비트 제거: dur=%s (%.1f/%.1f)",
-                             bdata.duration_value, accumulated, expected)
+                logger.warning("마디 용량 초과 비트 제거: dur=%s (%.1f/%.1f units)",
+                               bdata.duration_value, accumulated, expected)
                 break
             accumulated += units
 
@@ -344,6 +346,148 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
         start += mh.length
 
     return song
+
+
+def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
+    """ScoreSnapshot JSON dict → .gp5 파일 저장.
+
+    ScoreSnapshot 스트링 번호는 GP 컨벤션(1=high E)을 따르므로 반전 없음.
+
+    Raises
+    ------
+    ValueError
+        트랙 또는 마디 없는 경우.
+    """
+    _DYN_STR_MAP = {"ppp": 15, "pp": 31, "p": 47, "mp": 63,
+                    "mf": 79, "f": 95, "ff": 111, "fff": 127}
+    _SLIDE_MAP = {
+        "slide-shift": SlideType.shiftSlideTo,
+        "slide-legato": SlideType.legatoSlideTo,
+        "slide-in-above": SlideType.intoFromAbove,
+        "slide-out-below": SlideType.outUpwards,
+    }
+
+    tracks_data = snapshot.get("tracks", [])
+    if not tracks_data:
+        raise ValueError("snapshot에 트랙 없음")
+    measures_data = tracks_data[0].get("measures", [])
+    if not measures_data:
+        raise ValueError("snapshot에 마디 없음")
+
+    song = gpm.Song()
+    track = song.tracks[0]
+    track.name = "Guitar"
+
+    def _fill_snap(measure: gpm.Measure, mdata: dict) -> None:
+        voice = measure.voices[0]
+        voice.beats = []
+        ts = mdata.get("timeSignature", {})
+        expected = (ts.get("num", 4) / ts.get("den", 4)) * 64
+        accumulated = 0.0
+
+        for bdata in mdata.get("beats", []):
+            dur_val = bdata.get("duration", 4)
+            is_dotted = bdata.get("dotted", False)
+            base = _DUR_UNITS.get(dur_val, 16)
+            units = base * 1.5 if is_dotted else float(base)
+            if accumulated + units > expected + 0.01:
+                logger.warning("snapshot 마디 초과 비트 제거: dur=%s", dur_val)
+                break
+            accumulated += units
+
+            beat = Beat(voice)
+            beat.duration = gpm.Duration()
+            beat.duration.value = dur_val
+            if is_dotted:
+                beat.duration.isDotted = True
+
+            notes_data = bdata.get("notes", [])
+            if bdata.get("status") == "rest" or not notes_data:
+                beat.status = BeatStatus.rest
+                beat.notes = []
+            else:
+                beat.status = BeatStatus.normal
+                vel = _DYN_STR_MAP.get(bdata.get("dynamic", "mf"), 95)
+                for nd in notes_data:
+                    gnote = Note(beat)
+                    gnote.string = nd.get("string", 1)
+                    gnote.value = nd.get("fret", 0)
+                    gnote.velocity = vel
+                    eff = nd.get("effect")
+                    if eff in ("hammer-on", "pull-off"):
+                        gnote.effect.hammer = True
+                        gnote.type = NoteType.normal
+                    elif eff == "mute":
+                        gnote.type = NoteType.dead
+                    elif eff == "ghost":
+                        gnote.effect.ghostNote = True
+                        gnote.type = NoteType.normal
+                    elif eff == "harmonic":
+                        gnote.effect.harmonic = gpm.NaturalHarmonic()
+                        gnote.type = NoteType.normal
+                    elif eff in _SLIDE_MAP:
+                        gnote.effect.slides = [_SLIDE_MAP[eff]]
+                        gnote.type = NoteType.normal
+                    else:
+                        gnote.type = NoteType.normal
+                    beat.notes.append(gnote)
+
+            strum = bdata.get("strumDown")
+            if strum is True:
+                beat.effect.pickStroke = BeatStrokeDirection.down
+                beat.effect.stroke.direction = BeatStrokeDirection.down
+                beat.effect.stroke.value = dur_val
+            elif strum is False:
+                beat.effect.pickStroke = BeatStrokeDirection.up
+                beat.effect.stroke.direction = BeatStrokeDirection.up
+                beat.effect.stroke.value = dur_val
+
+            voice.beats.append(beat)
+
+        remaining = expected - accumulated
+        if remaining > 0.01:
+            for dv in _DUR_FILL_ORDER:
+                fu = _DUR_UNITS[dv]
+                while remaining >= fu - 0.01:
+                    rest = Beat(voice)
+                    rest.status = BeatStatus.rest
+                    rest.duration = gpm.Duration()
+                    rest.duration.value = dv
+                    rest.notes = []
+                    voice.beats.append(rest)
+                    remaining -= fu
+
+        if not voice.beats:
+            rest = Beat(voice)
+            rest.status = BeatStatus.rest
+            rest.duration = gpm.Duration()
+            rest.duration.value = 4
+            rest.notes = []
+            voice.beats.append(rest)
+
+    ts0 = measures_data[0].get("timeSignature", {})
+    first_mh = song.measureHeaders[0]
+    first_mh.number = 1
+    first_mh.timeSignature.numerator = ts0.get("num", 4)
+    first_mh.timeSignature.denominator.value = ts0.get("den", 4)
+    _fill_snap(track.measures[0], measures_data[0])
+
+    start = first_mh.start + first_mh.length
+    for i, mdata in enumerate(measures_data[1:], start=2):
+        ts = mdata.get("timeSignature", {})
+        mh = gpm.MeasureHeader()
+        mh.number = i
+        mh.start = start
+        mh.timeSignature.numerator = ts.get("num", 4)
+        mh.timeSignature.denominator.value = ts.get("den", 4)
+        song.measureHeaders.append(mh)
+        m = gpm.Measure(track, mh)
+        _fill_snap(m, mdata)
+        track.measures.append(m)
+        start += mh.length
+
+    guitarpro.write(song, out_path)
+    return out_path
 
 
 def token_texts_to_gp5(token_texts: List[str], out_path: str) -> str:
