@@ -7,6 +7,7 @@ import { applyEdit, applySnapshot, type EditPayload } from '../../lib/scoreAppli
 import { useSyncFile } from '../../lib/useSyncFile'
 import EditPanel from './EditPanel'
 import ExportMenu from './ExportMenu'
+import StructurePanel from './StructurePanel'
 import type { NotePosition, Dynamic, Effect } from '../../lib/scoreTypes'
 
 interface Props {
@@ -157,8 +158,10 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         <div ref={containerRef} style={{ width: '100%', flex: 1 }} />
       </div>
 
-      {/* EditPanel */}
+      {/* 우측 패널: StructurePanel + EditPanel */}
       <div style={{ width: 280, borderLeft: '1px solid #ddd', overflowY: 'auto', flexShrink: 0 }}>
+        <StructurePanel />
+        <hr style={{ margin: '4px 0' }} />
         <EditPanel
           selectedPosition={selected}
           currentBeat={currentBeat}
