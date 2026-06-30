@@ -4,6 +4,7 @@ from httpx import AsyncClient
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-32chars-minimum!!")
 os.environ.setdefault("GOOGLE_CLIENT_ID", "g-id")
@@ -15,12 +16,16 @@ os.environ.setdefault("FRONTEND_URL", "http://localhost:5173")
 from app.database import Base, get_db
 from app.main import app
 
-_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+_engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 Base.metadata.create_all(_engine)
 _Session = sessionmaker(bind=_engine)
 
 
-def override_db():
+def _override_db():
     s = _Session()
     try:
         yield s
@@ -28,7 +33,13 @@ def override_db():
         s.close()
 
 
-app.dependency_overrides[get_db] = override_db
+@pytest.fixture(autouse=True)
+def _set_db_override():
+    app.dependency_overrides[get_db] = _override_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
+
+
 client = TestClient(app, follow_redirects=False)
 
 
