@@ -49,11 +49,12 @@ def export_midi(
     if not f.gp5_path or not os.path.exists(f.gp5_path):
         raise HTTPException(status_code=404, detail="GP5 파일 없음")
 
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mid")
+    os.close(tmp_fd)
     try:
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mid")
-        os.close(tmp_fd)
         gp5_to_midi(f.gp5_path, tmp_path)
     except Exception as e:
+        os.unlink(tmp_path)
         raise HTTPException(status_code=422, detail=f"MIDI 변환 실패: {e}")
 
     return FileResponse(
