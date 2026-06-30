@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest'
 function makeNote(overrides: Record<string, unknown> = {}) {
   return {
     string: 1, fret: 5,
-    hammerOrPull: false, isGhost: false, isMuted: false,
-    slideType: 0,  // 0 = None
+    isHammerPullOrigin: false, isGhost: false, isDead: false,
+    slideInType: 0,   // 0 = None
+    slideOutType: 0,  // 0 = None
     harmonicType: 0,  // 0 = None
     ...overrides,
   }
@@ -74,7 +75,7 @@ describe('serializeScore', () => {
 
   it('hammer-on 이펙트를 직렬화한다', async () => {
     const { serializeScore } = await import('../lib/scoreSerializer')
-    const snap = serializeScore(makeScore([makeBeat({ notes: [makeNote({ hammerOrPull: true })] })]))
+    const snap = serializeScore(makeScore([makeBeat({ notes: [makeNote({ isHammerPullOrigin: true })] })]))
     expect(snap.tracks[0].measures[0].beats[0].notes[0].effect).toBe('hammer-on')
   })
 
@@ -86,7 +87,7 @@ describe('serializeScore', () => {
 
   it('mute 이펙트를 직렬화한다', async () => {
     const { serializeScore } = await import('../lib/scoreSerializer')
-    const snap = serializeScore(makeScore([makeBeat({ notes: [makeNote({ isMuted: true })] })]))
+    const snap = serializeScore(makeScore([makeBeat({ notes: [makeNote({ isDead: true })] })]))
     expect(snap.tracks[0].measures[0].beats[0].notes[0].effect).toBe('mute')
   })
 

@@ -14,12 +14,12 @@ const DYNAMIC_INDICES: Record<Dynamic, number> = {
   ppp: 0, pp: 1, p: 2, mp: 3, mf: 4, f: 5, ff: 6, fff: 7,
 }
 
-// alphaTab SlideType 숫자값 (Effect → 숫자)
-const EFFECT_SLIDE_MAP: Partial<Record<Effect, number>> = {
-  'slide-shift': 1,
-  'slide-legato': 2,
-  'slide-in-above': 4,
-  'slide-out-below': 8,
+// alphaTab SlideOutType / SlideInType 숫자값 (Effect → {in, out})
+const EFFECT_SLIDE_MAP: Partial<Record<Effect, { slideInType?: number; slideOutType?: number }>> = {
+  'slide-shift':    { slideOutType: 1 },   // SlideOutType.Shift
+  'slide-legato':   { slideOutType: 2 },   // SlideOutType.Legato
+  'slide-in-above': { slideInType: 2 },    // SlideInType.IntoFromAbove
+  'slide-out-below': { slideOutType: 4 },  // SlideOutType.OutDown
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,11 +33,12 @@ function getBeat(score: any, pos: NotePosition) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function clearNoteEffects(note: any) {
-  note.hammerOrPull = false
+  note.isHammerPullOrigin = false
   note.isGhost = false
-  note.isMuted = false
+  note.isDead = false
   note.harmonicType = 0
-  note.slideType = 0
+  note.slideInType = 0
+  note.slideOutType = 0
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,11 +54,10 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
   } else if (edit.type === 'strumDown') {
     beat.pickStroke = edit.value === true ? 2 : edit.value === false ? 1 : 0
   } else if (edit.type === 'addNote') {
-    beat.notes.push({ string: 1, fret: 0, hammerOrPull: false, isGhost: false, isMuted: false, slideType: 0, harmonicType: 0 })
-    beat.isRest = false
+    beat.notes.push({ string: 1, fret: 0, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0 })
   } else if (edit.type === 'deleteNote' && pos.noteIndex !== null) {
     beat.notes.splice(pos.noteIndex, 1)
-    if (beat.notes.length === 0) beat.isRest = true
+    // beat.isRest는 getter 전용 — notes가 비면 alphaTab이 자동으로 true 반환
   } else if (edit.type === 'fret' && pos.noteIndex !== null) {
     beat.notes[pos.noteIndex].fret = edit.value
   } else if (edit.type === 'effect') {
@@ -66,15 +66,17 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
     clearNoteEffects(note)
     if (edit.value === null) return
     if (edit.value === 'hammer-on' || edit.value === 'pull-off') {
-      note.hammerOrPull = true
+      note.isHammerPullOrigin = true
     } else if (edit.value === 'ghost') {
       note.isGhost = true
     } else if (edit.value === 'mute') {
-      note.isMuted = true
+      note.isDead = true
     } else if (edit.value === 'harmonic') {
       note.harmonicType = 1
     } else if (EFFECT_SLIDE_MAP[edit.value] !== undefined) {
-      note.slideType = EFFECT_SLIDE_MAP[edit.value]!
+      const slideVal = EFFECT_SLIDE_MAP[edit.value]!
+      if (slideVal.slideInType !== undefined) note.slideInType = slideVal.slideInType
+      if (slideVal.slideOutType !== undefined) note.slideOutType = slideVal.slideOutType
     }
   }
 }
@@ -94,17 +96,21 @@ export function applySnapshot(score: any, snap: ScoreSnapshot): void {
         if (!bsnap) return
         beat.duration.value = bsnap.duration
         beat.duration.isDotted = bsnap.dotted
-        beat.isRest = bsnap.status === 'rest'
+        // beat.isRest는 getter 전용 — notes 배열로 alphaTab이 자동 결정
         beat.dynamics = DYNAMIC_INDICES[bsnap.dynamic ?? 'mf'] ?? 4
         beat.pickStroke = bsnap.strumDown === true ? 2 : bsnap.strumDown === false ? 1 : 0
         beat.notes = bsnap.notes.map((nsnap: { string: number; fret: number; effect?: Effect }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const note: any = { string: nsnap.string, fret: nsnap.fret, hammerOrPull: false, isGhost: false, isMuted: false, slideType: 0, harmonicType: 0 }
-          if (nsnap.effect === 'hammer-on' || nsnap.effect === 'pull-off') note.hammerOrPull = true
+          const note: any = { string: nsnap.string, fret: nsnap.fret, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0 }
+          if (nsnap.effect === 'hammer-on' || nsnap.effect === 'pull-off') note.isHammerPullOrigin = true
           else if (nsnap.effect === 'ghost') note.isGhost = true
-          else if (nsnap.effect === 'mute') note.isMuted = true
+          else if (nsnap.effect === 'mute') note.isDead = true
           else if (nsnap.effect === 'harmonic') note.harmonicType = 1
-          else if (nsnap.effect && EFFECT_SLIDE_MAP[nsnap.effect]) note.slideType = EFFECT_SLIDE_MAP[nsnap.effect]!
+          else if (nsnap.effect && EFFECT_SLIDE_MAP[nsnap.effect]) {
+            const slideVal = EFFECT_SLIDE_MAP[nsnap.effect]!
+            if (slideVal.slideInType !== undefined) note.slideInType = slideVal.slideInType
+            if (slideVal.slideOutType !== undefined) note.slideOutType = slideVal.slideOutType
+          }
           return note
         })
       })

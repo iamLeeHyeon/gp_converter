@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { NotePosition } from '../lib/scoreTypes'
 
 function makeNote(overrides: Record<string, unknown> = {}) {
-  return { string: 1, fret: 5, hammerOrPull: false, isGhost: false, isMuted: false, slideType: 0, harmonicType: 0, ...overrides }
+  return { string: 1, fret: 5, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0, ...overrides }
 }
 
 function makeBeat(overrides: Record<string, unknown> = {}) {
@@ -55,15 +55,15 @@ describe('applyEdit', () => {
     const { applyEdit } = await import('../lib/scoreApplier')
     const score = makeScore()
     applyEdit(score, POS, { type: 'effect', value: 'hammer-on' })
-    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].hammerOrPull).toBe(true)
+    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].isHammerPullOrigin).toBe(true)
   })
 
   it('이펙트를 null로 초기화한다', async () => {
     const { applyEdit } = await import('../lib/scoreApplier')
-    const score = makeScore([makeBeat({ notes: [makeNote({ hammerOrPull: true })] })])
+    const score = makeScore([makeBeat({ notes: [makeNote({ isHammerPullOrigin: true })] })])
     applyEdit(score, POS, { type: 'effect', value: null })
     const note = score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0]
-    expect(note.hammerOrPull).toBe(false)
+    expect(note.isHammerPullOrigin).toBe(false)
   })
 
   it('다이나믹을 변경한다', async () => {

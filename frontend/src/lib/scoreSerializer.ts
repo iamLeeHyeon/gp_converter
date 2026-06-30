@@ -4,21 +4,26 @@ const DYNAMIC_VALUES: Record<number, Dynamic> = {
   0: 'ppp', 1: 'pp', 2: 'p', 3: 'mp', 4: 'mf', 5: 'f', 6: 'ff', 7: 'fff',
 }
 
-// alphaTab SlideType 숫자값 → Effect 문자열 (alphaTab 1.x 기준)
-const SLIDE_TYPE_MAP: Record<number, Effect> = {
-  1: 'slide-shift',
-  2: 'slide-legato',
-  4: 'slide-in-above',
-  8: 'slide-out-below',
+// alphaTab SlideOutType 숫자값 → Effect 문자열
+const SLIDE_OUT_TYPE_MAP: Record<number, Effect> = {
+  1: 'slide-shift',    // SlideOutType.Shift
+  2: 'slide-legato',   // SlideOutType.Legato
+  4: 'slide-out-below', // SlideOutType.OutDown
+}
+// alphaTab SlideInType 숫자값 → Effect 문자열
+const SLIDE_IN_TYPE_MAP: Record<number, Effect> = {
+  2: 'slide-in-above', // SlideInType.IntoFromAbove
 }
 
 function getNoteEffect(note: Record<string, unknown>): Effect | undefined {
-  if (note.hammerOrPull) return 'hammer-on'
-  if (note.isMuted) return 'mute'
+  if (note.isHammerPullOrigin) return 'hammer-on'
+  if (note.isDead) return 'mute'
   if (note.isGhost) return 'ghost'
   if ((note.harmonicType as number) > 0) return 'harmonic'
-  const slideType = note.slideType as number
-  if (slideType > 0 && SLIDE_TYPE_MAP[slideType]) return SLIDE_TYPE_MAP[slideType]
+  const slideOutType = note.slideOutType as number
+  if (slideOutType > 0 && SLIDE_OUT_TYPE_MAP[slideOutType]) return SLIDE_OUT_TYPE_MAP[slideOutType]
+  const slideInType = note.slideInType as number
+  if (slideInType > 0 && SLIDE_IN_TYPE_MAP[slideInType]) return SLIDE_IN_TYPE_MAP[slideInType]
   return undefined
 }
 

@@ -1,3 +1,5 @@
+import os
+import tempfile
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -23,8 +25,15 @@ def sync_file(
         raise HTTPException(status_code=403, detail="접근 금지")
 
     try:
-        snapshot_to_gp5(snapshot, f.gp5_path)
-    except ValueError as e:
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix='.gp5', dir=os.path.dirname(f.gp5_path))
+        try:
+            os.close(tmp_fd)
+            snapshot_to_gp5(snapshot, tmp_path)
+            os.replace(tmp_path, f.gp5_path)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
+    except (ValueError, KeyError, TypeError) as e:
         raise HTTPException(status_code=422, detail=str(e))
 
     return {"ok": True}
