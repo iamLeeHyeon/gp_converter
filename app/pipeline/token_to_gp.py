@@ -472,7 +472,7 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
     first_mh.number = 1
     first_mh.timeSignature.numerator = ts0.get("num", 4)
     first_mh.timeSignature.denominator.value = ts0.get("den", 4)
-    first_mh.keySignature = KeySignature(measures_data[0].get("keySignature", 0), 0)
+    first_mh.keySignature = KeySignature((measures_data[0].get("keySignature", 0), 0))
     _marker = measures_data[0].get("sectionMarker")
     if _marker:
         first_mh.marker = gpm.Marker(title=_marker)
@@ -486,7 +486,7 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
         mh.start = start
         mh.timeSignature.numerator = ts.get("num", 4)
         mh.timeSignature.denominator.value = ts.get("den", 4)
-        mh.keySignature = KeySignature(mdata.get("keySignature", 0), 0)
+        mh.keySignature = KeySignature((mdata.get("keySignature", 0), 0))
         _loop_marker = mdata.get("sectionMarker")
         if _loop_marker:
             mh.marker = gpm.Marker(title=_loop_marker)
