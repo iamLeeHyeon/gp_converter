@@ -11,3 +11,4 @@ PyGuitarPro==0.10.*
 pdfminer.six==20251107
 pymupdf>=1.24.0
 python-dotenv>=1.0.0
+mido>=1.3
