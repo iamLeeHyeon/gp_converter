@@ -1,8 +1,6 @@
 import json
-import os
-import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from app.main import app
 from app.auth import create_access_token
@@ -52,15 +50,19 @@ def test_sync_200(tmp_path):
     mock_fn.assert_called_once()
 
 
-def test_sync_403_wrong_user():
+def test_sync_403_wrong_user(tmp_path):
     """타인 파일 접근 → 403."""
     from app.database import SessionLocal
     from app.models import User, File
 
     db = SessionLocal()
+    # u1 유저와 f1 파일 직접 생성
+    user1 = User(id="u1", email="a@b.com", provider="google", provider_id="x")
+    gp5_path = str(tmp_path / "out.gp5")
+    open(gp5_path, "wb").close()
+    file1 = File(id="f1", user_id="u1", name="test", gp5_path=gp5_path)
     user2 = User(id="u2", email="b@b.com", provider="google", provider_id="y")
-    db.merge(user2)
-    # f1은 u1 소유 (test_sync_200에서 이미 생성)
+    db.merge(user1); db.merge(file1); db.merge(user2)
     db.commit(); db.close()
 
     token = _make_token("u2")
@@ -87,11 +89,26 @@ def test_sync_404():
 
 def test_sync_422_bad_json():
     """빈 tracks → 422."""
-    token = _make_token("u1")
-    resp = client.post(
-        "/files/f1/sync",
-        content=json.dumps({"tracks": []}),
-        headers={"Authorization": f"Bearer {token}",
-                 "Content-Type": "application/json"},
-    )
-    assert resp.status_code == 422
+    from app.database import SessionLocal
+    from app.models import User, File
+    import tempfile
+
+    # u1, f1 생성
+    db = SessionLocal()
+    user = User(id="u1", email="a@b.com", provider="google", provider_id="x")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        gp5_path = f"{tmp_dir}/out.gp5"
+        open(gp5_path, "wb").close()
+        file = File(id="f1", user_id="u1", name="test", gp5_path=gp5_path)
+        db.merge(user); db.merge(file); db.commit()
+
+        token = _make_token("u1")
+        with patch("app.routers.edit.snapshot_to_gp5", side_effect=ValueError("snapshot에 트랙 없음")):
+            resp = client.post(
+                "/files/f1/sync",
+                content=json.dumps({"tracks": []}),
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json"},
+            )
+        assert resp.status_code == 422
+    db.close()
