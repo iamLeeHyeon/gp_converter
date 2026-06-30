@@ -1,16 +1,26 @@
 import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
-// alphaTab은 브라우저 Canvas 필요 → 목 처리
 vi.mock('../lib/alphatab', () => ({
   initAlphaTab: vi.fn().mockReturnValue({
     scoreLoaded: { on: vi.fn() },
     playerStateChanged: { on: vi.fn() },
+    noteMouseDown: { on: vi.fn() },
     load: vi.fn(),
     playPause: vi.fn(),
     destroy: vi.fn(),
+    render: vi.fn(),
+    score: null,
   }),
 }))
+vi.mock('../store/editorStore', () => ({
+  useEditorStore: vi.fn().mockReturnValue({
+    selected: null, fileId: null, present: null, saveStatus: 'idle',
+    setSelected: vi.fn(), pushSnapshot: vi.fn(), undo: vi.fn(), redo: vi.fn(),
+    clearHistory: vi.fn(),
+  }),
+}))
+vi.mock('../lib/useSyncFile', () => ({ useSyncFile: vi.fn() }))
 
 import ScoreViewer from '../components/Editor/ScoreViewer'
 

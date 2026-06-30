@@ -3,7 +3,7 @@ import { useFileStore } from '../../store/fileStore'
 import { api } from '../../lib/api'
 
 interface Props {
-  onSelect: (gp5Buffer: ArrayBuffer) => void
+  onSelect: (gp5Buffer: ArrayBuffer, fileId: string) => void
 }
 
 export default function FileList({ onSelect }: Props) {
@@ -21,7 +21,7 @@ export default function FileList({ onSelect }: Props) {
           <button
             onClick={async () => {
               const buf = await api.getResult(f.id)  // Phase 1에서 /files/{id}/gp5로 교체
-              onSelect(buf)
+              onSelect(buf, f.id)
             }}
             style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}
           >

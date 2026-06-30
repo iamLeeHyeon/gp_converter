@@ -4,7 +4,7 @@ import { connectSSE, type ProgressEvent } from '../../lib/sse'
 import ProgressBar from '../Editor/ProgressBar'
 
 interface Props {
-  onComplete: (jobId: string, gp5Buffer: ArrayBuffer) => void
+  onComplete: (jobId: string, gp5Buffer: ArrayBuffer, fileId?: string | null) => void
 }
 
 export default function UploadButton({ onComplete }: Props) {
@@ -19,7 +19,7 @@ export default function UploadButton({ onComplete }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const { job_id } = await api.upload(file)
+      const { job_id, file_id } = await api.upload(file)
       setProgress({ status: 'running', pct: 5, step: 'queued' })
       connectSSE(
         job_id,
@@ -28,7 +28,7 @@ export default function UploadButton({ onComplete }: Props) {
           const buf = await api.getResult(job_id)
           setBusy(false)
           setProgress(null)
-          onComplete(job_id, buf)
+          onComplete(job_id, buf, file_id)
         },
         (msg) => {
           setError(msg)
