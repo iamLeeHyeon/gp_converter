@@ -71,10 +71,12 @@ interface ScoreSnapshot {
                   | 'slide-shift' | 'slide-legato'
                   | 'slide-in-above' | 'slide-out-below'
                   | 'mute' | 'ghost' | 'harmonic'
-          velocity?: number // 15-127
+          // effect는 음표당 하나만 허용 (복합 불가)
         }[]
         strumDown?: boolean
         dynamic?: 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff'
+        // dynamic은 비트 레벨 — 해당 비트의 모든 음표에 동일하게 적용
+        // velocity(음표별 숫자) 오버라이드는 Phase 2 이후
       }[]
     }[]
   }[]
@@ -114,7 +116,7 @@ interface ScoreSnapshot {
 | 이펙트 | 드롭다운 또는 버튼 | hammer-on, pull-off, slide-shift, slide-legato, slide-in-above, slide-out-below, mute, ghost, harmonic |
 | 스트럼 | ▼▲ 버튼 | down/up/none |
 | 다이나믹 | 버튼 그룹 | ppp~fff |
-| 음표 추가 | [+] 버튼 | 빈 비트에 기본 음표 삽입 |
+| 음표 추가 | [+] 버튼 | 빈 비트에 기본 음표 삽입 (string=1, fret=0, duration=4) |
 | 음표 삭제 | [×] 버튼 | 선택 음표 제거 |
 
 ---
