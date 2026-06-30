@@ -1,7 +1,4 @@
 """GP5 파일 → MIDI 변환 (guitarpro + mido)."""
-import os
-import tempfile
-
 import guitarpro as gpm
 import mido
 
@@ -21,10 +18,11 @@ def gp5_to_midi(gp5_path: str, out_path: str) -> str:
     for ti, track in enumerate(song.tracks):
         # (절대 tick, 메시지 타입, pitch, velocity) 이벤트 수집
         events: list[tuple[int, str, int, int]] = []
-        abs_tick = 0
+        measure_start = 0
 
         for measure in track.measures:
             for voice in measure.voices:
+                abs_tick = measure_start          # voice마다 measure 시작으로 리셋
                 for beat in voice.beats:
                     dur = beat.duration.time  # ticks (quarter=960)
                     if beat.status == gpm.BeatStatus.normal:
@@ -35,6 +33,10 @@ def gp5_to_midi(gp5_path: str, out_path: str) -> str:
                                 events.append((abs_tick, 'note_on', pitch, 80))
                                 events.append((abs_tick + dur, 'note_off', pitch, 0))
                     abs_tick += dur
+            # measure 전체 길이: 첫 voice의 총 duration으로 measure_start 전진
+            if measure.voices and measure.voices[0].beats:
+                measure_len = sum(b.duration.time for b in measure.voices[0].beats)
+                measure_start += measure_len
 
         # 같은 tick에서 note_off를 note_on보다 먼저 처리
         events.sort(key=lambda e: (e[0], 0 if e[1] == 'note_off' else 1))

@@ -135,7 +135,8 @@ class TestMidiExport:
         from app.database import SessionLocal
         with patch("app.routers.export.gp5_to_midi") as mock_fn:
             midi_out = str(tmp_path / "mock.mid")
-            open(midi_out, "wb").write(b"MThd")  # 최소 MIDI 헤더
+            with open(midi_out, "wb") as fh:
+                fh.write(b"MThd")  # 최소 MIDI 헤더
             mock_fn.return_value = midi_out
 
             db = SessionLocal()

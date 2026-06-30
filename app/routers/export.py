@@ -1,6 +1,7 @@
 import os
 import tempfile
 from fastapi import APIRouter, Depends, HTTPException
+from starlette.background import BackgroundTask
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -59,5 +60,5 @@ def export_midi(
         tmp_path,
         media_type="audio/midi",
         filename=f"{f.name}.mid",
-        background=None,  # FileResponse가 전송 후 파일 삭제하지 않음 (tmp는 OS가 정리)
+        background=BackgroundTask(os.unlink, tmp_path),
     )
