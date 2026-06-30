@@ -14,6 +14,9 @@ env/
 # Env / secrets
 .env
 
+# 외부 ML 레포 (배포 시 별도 관리)
+guitar-tab-omr/
+
 # superpowers scratch (subagent-driven-development progress ledger)
 .superpowers/
 
@@ -30,3 +33,6 @@ jobs/
 .agents/
 .claude/skills/
 skills-lock.json
+
+# Frontend build output
+static/assets/
