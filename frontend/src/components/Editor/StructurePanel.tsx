@@ -22,9 +22,9 @@ export default function StructurePanel() {
 
   async function applyAndSync(edit: Parameters<typeof applyStructuralEdit>[1]) {
     if (!present || !fileId) return
+    setBusy(true)
     const next = applyStructuralEdit(present, edit)
     pushSnapshot(next)
-    setBusy(true)
     try {
       setSaveStatus('saving')
       await api.syncFile(fileId, next)
@@ -108,12 +108,8 @@ export default function StructurePanel() {
               })}
             />
             {' / '}
-            <input
-              type="number"
-              min={2}
-              max={16}
-              step={2}
-              style={{ width: 40, marginLeft: 4 }}
+            <select
+              style={{ marginLeft: 4 }}
               value={selected.timeSignature.den}
               onChange={e => applyAndSync({
                 type: 'setTimeSignature',
@@ -121,7 +117,9 @@ export default function StructurePanel() {
                 num: selected.timeSignature.num,
                 den: Number(e.target.value),
               })}
-            />
+            >
+              {[2, 4, 8, 16].map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
           </label>
 
           {/* 조표 */}

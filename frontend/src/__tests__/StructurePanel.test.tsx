@@ -25,6 +25,7 @@ import StructurePanel from '../components/Editor/StructurePanel'
 
 describe('StructurePanel', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     useEditorStore.setState({
       present: snap2,
       selectedMeasureIndex: 0,
@@ -53,10 +54,26 @@ describe('StructurePanel', () => {
     expect(screen.getByPlaceholderText(/섹션/i)).toBeInTheDocument()
   })
 
-  it('박자표 num/den 입력 존재', () => {
+  it('박자표 num 입력 + den 셀렉트 존재', () => {
     render(<StructurePanel />)
-    // 박자 numerator input
-    const inputs = screen.getAllByRole('spinbutton')
-    expect(inputs.length).toBeGreaterThanOrEqual(2)
+    const spinbuttons = screen.getAllByRole('spinbutton')
+    expect(spinbuttons.length).toBeGreaterThanOrEqual(1)  // num input
+    const selects = screen.getAllByRole('combobox')
+    expect(selects.length).toBeGreaterThanOrEqual(1)  // den select (+ key sig select)
+  })
+
+  it('마디 추가 버튼 클릭 → api.syncFile 호출', async () => {
+    const { api } = await import('../lib/api')
+    render(<StructurePanel />)
+    await userEvent.click(screen.getByRole('button', { name: /마디 추가/i }))
+    expect(api.syncFile).toHaveBeenCalledOnce()
+  })
+
+  it('삭제 버튼 클릭 → api.syncFile 호출 (2개 마디일 때)', async () => {
+    const { api } = await import('../lib/api')
+    render(<StructurePanel />)
+    const deleteButtons = screen.getAllByRole('button', { name: /삭제/i })
+    await userEvent.click(deleteButtons[0])
+    expect(api.syncFile).toHaveBeenCalledOnce()
   })
 })
