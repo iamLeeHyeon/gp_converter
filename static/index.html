@@ -1,46 +1,19 @@
 <!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PDF → Guitar Pro 변환기</title>
-</head>
-<body>
-  <h1>PDF → Guitar Pro 변환기</h1>
-  <input type="file" id="file" accept="application/pdf" />
-  <button id="go">변환</button>
-  <p id="status"></p>
-  <a id="download" href="#" style="display:none">.gp5 다운로드</a>
-  <script>
-    const $ = (id) => document.getElementById(id);
-    $("go").onclick = async () => {
-      const f = $("file").files[0];
-      if (!f) { $("status").textContent = "PDF를 선택하세요"; return; }
-      $("download").style.display = "none";
-      $("go").disabled = true;
-      const fd = new FormData();
-      fd.append("file", f);
-      $("status").textContent = "업로드 중...";
-      const r = await fetch("/convert", { method: "POST", body: fd });
-      if (!r.ok) { $("status").textContent = "오류: " + (await r.json()).detail; $("go").disabled = false; return; }
-      const { job_id } = await r.json();
-      poll(job_id);
-    };
-    async function poll(id) {
-      const r = await fetch(`/jobs/${id}`);
-      const j = await r.json();
-      $("status").textContent = "상태: " + j.status + (j.message ? " - " + j.message : "");
-      if (j.status === "done") {
-        const dl = $("download");
-        dl.href = `/jobs/${id}/result`;
-        dl.style.display = "inline";
-        $("go").disabled = false;
-      } else if (j.status === "failed") {
-        $("go").disabled = false;
-      } else {
-        setTimeout(() => poll(id), 1500);
-      }
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  <style>
+    @media (max-width: 600px) {
+      body > #root > div { flex-direction: column !important; }
+      aside { width: 100% !important; border-right: none !important; border-bottom: 1px solid #ddd; }
     }
-  </script>
-</body>
+  </style>
+    <script type="module" crossorigin src="/assets/index-x-p5Epqw.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

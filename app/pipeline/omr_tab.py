@@ -71,7 +71,7 @@ def crop_tab_systems(
             rect = fitz.Rect(0, rect_y0, page.rect.width, rect_y1)
             rect = rect.intersect(page_bounds)
 
-            mat = fitz.Matrix(2.0, 2.0)  # 2x 해상도로 렌더링
+            mat = fitz.Matrix(3.0, 3.0)  # 3x 해상도로 렌더링 (밀집 리듬 인식 개선)
             pix = page.get_pixmap(matrix=mat, clip=rect)
 
             img_path = str(Path(clips_dir) / f"clip-{idx + 1}.png")
