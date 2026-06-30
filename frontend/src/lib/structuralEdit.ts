@@ -95,7 +95,7 @@ export function applyStructuralEdit(
       break
     case 'setTuning':
       if (tracks[edit.trackIndex])
-        tracks[edit.trackIndex] = { ...tracks[edit.trackIndex], tuning: edit.tuning }
+        tracks[edit.trackIndex] = { ...tracks[edit.trackIndex], tuning: [...edit.tuning] }
       break
     case 'setCapo':
       if (tracks[edit.trackIndex])
