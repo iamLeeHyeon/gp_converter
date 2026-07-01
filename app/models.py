@@ -26,6 +26,8 @@ class File(Base):
     gp5_path = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    shared_token = Column(String, unique=True, nullable=True, index=True)
+    shared_expires_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class DbJob(Base):

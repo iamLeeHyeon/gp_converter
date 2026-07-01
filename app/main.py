@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.database import Base, engine, get_db
+from app.database import Base, engine, get_db, run_sqlite_migrations
 from app.jobs import JobStore, JobStatus
 from app.models import User, File as DbFile
 from app.routers.auth import router as auth_router
@@ -24,8 +24,9 @@ from app.routers.edit import router as edit_router
 from app.routers.export import router as export_router
 from app.worker import process_job
 
-# DB 테이블 자동 생성
+# DB 테이블 자동 생성 + 기존 테이블 컬럼 마이그레이션
 Base.metadata.create_all(bind=engine)
+run_sqlite_migrations(engine)
 
 app = FastAPI(title="GP Converter")
 
