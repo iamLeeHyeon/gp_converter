@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api } from '../../lib/api'
+import ShareModal from './ShareModal'
 
 interface Props {
   fileId: string | null
@@ -8,6 +9,7 @@ interface Props {
 
 export default function ExportMenu({ fileId, onPrint }: Props) {
   const [loading, setLoading] = useState<'gp5' | 'midi' | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const handleGP5 = async () => {
     if (!fileId) return
@@ -42,6 +44,10 @@ export default function ExportMenu({ fileId, onPrint }: Props) {
       <button onClick={handleMIDI} disabled={!fileId || loading === 'midi'}>
         {loading === 'midi' ? '…' : 'MIDI 저장'}
       </button>
+      <button onClick={() => setShareOpen(true)} disabled={!fileId}>공유</button>
+      {shareOpen && fileId && (
+        <ShareModal fileId={fileId} onClose={() => setShareOpen(false)} />
+      )}
     </span>
   )
 }

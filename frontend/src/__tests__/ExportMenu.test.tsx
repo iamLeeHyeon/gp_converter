@@ -6,6 +6,9 @@ vi.mock('../lib/api', () => ({
   api: {
     downloadGP5: vi.fn().mockResolvedValue(undefined),
     downloadMIDI: vi.fn().mockResolvedValue(undefined),
+    getShareStatus: vi.fn().mockResolvedValue({ token: null, expires_at: null }),
+    createShareLink: vi.fn(),
+    revokeShareLink: vi.fn(),
   },
 }))
 
@@ -51,5 +54,16 @@ describe('ExportMenu', () => {
     render(<ExportMenu fileId="f1" onPrint={onPrint} />)
     await userEvent.click(screen.getByRole('button', { name: /MIDI/i }))
     expect(api.downloadMIDI).toHaveBeenCalledWith('f1', expect.stringContaining('.mid'))
+  })
+
+  it('공유 버튼 클릭 → ShareModal 오픈', async () => {
+    render(<ExportMenu fileId="f1" onPrint={onPrint} />)
+    await userEvent.click(screen.getByRole('button', { name: /공유/i }))
+    expect(await screen.findByText('공유 링크')).toBeInTheDocument()
+  })
+
+  it('fileId 없으면 공유 버튼 비활성화', () => {
+    render(<ExportMenu fileId={null} onPrint={onPrint} />)
+    expect(screen.getByRole('button', { name: /공유/i })).toBeDisabled()
   })
 })
