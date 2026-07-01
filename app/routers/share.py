@@ -1,8 +1,10 @@
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -74,3 +76,21 @@ def revoke_share_link(
     f.shared_token = None
     f.shared_expires_at = None
     db.commit()
+
+
+def _as_utc(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+@router.get("/shared/{token}")
+def get_shared_gp5(token: str, db: Session = Depends(get_db)):
+    """공유 토큰으로 GP5 파일 조회 — 인증 불필요."""
+    f = db.query(File).filter_by(shared_token=token).first()
+    if f is None:
+        raise HTTPException(status_code=404, detail="유효하지 않은 링크")
+    if f.shared_expires_at is not None:
+        if datetime.now(timezone.utc) > _as_utc(f.shared_expires_at):
+            raise HTTPException(status_code=404, detail="링크가 만료되었습니다")
+    if not f.gp5_path or not os.path.exists(f.gp5_path):
+        raise HTTPException(status_code=404, detail="GP5 파일 없음")
+    return FileResponse(f.gp5_path, media_type="application/octet-stream")

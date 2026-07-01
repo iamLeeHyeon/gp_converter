@@ -143,3 +143,60 @@ class TestRevokeShareLink:
         resp = client.delete("/files/f5/share",
                               headers={"Authorization": f"Bearer {_tok('u5')}"})
         assert resp.status_code == 403
+
+
+class TestPublicShareAccess:
+    def test_200_returns_gp5_bytes(self, tmp_path):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user_file(db, tmp_path, fid="f6")
+        db.close()
+
+        headers = {"Authorization": f"Bearer {_tok('u1')}"}
+        created = client.post("/files/f6/share", json={}, headers=headers).json()
+
+        resp = client.get(f"/files/shared/{created['token']}")  # 인증 헤더 없음
+        assert resp.status_code == 200
+        assert resp.content == b"GP5DATA"
+
+    def test_200_infinite_expiry_always_accessible(self, tmp_path):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user_file(db, tmp_path, fid="f7")
+        db.close()
+
+        headers = {"Authorization": f"Bearer {_tok('u1')}"}
+        created = client.post("/files/f7/share", json={"expires_in_days": None},
+                               headers=headers).json()
+
+        resp = client.get(f"/files/shared/{created['token']}")
+        assert resp.status_code == 200
+
+    def test_404_unknown_token(self):
+        resp = client.get("/files/shared/nonexistent-token-xyz")
+        assert resp.status_code == 404
+
+    def test_404_expired_token(self, tmp_path):
+        from app.database import SessionLocal
+        from app.models import File
+        db = SessionLocal()
+        f = _setup_user_file(db, tmp_path, fid="f8")
+        f.shared_token = "expired-token-abc"
+        f.shared_expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+        db.merge(f); db.commit(); db.close()
+
+        resp = client.get("/files/shared/expired-token-abc")
+        assert resp.status_code == 404
+
+    def test_404_revoked_token(self, tmp_path):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user_file(db, tmp_path, fid="f9")
+        db.close()
+
+        headers = {"Authorization": f"Bearer {_tok('u1')}"}
+        created = client.post("/files/f9/share", json={}, headers=headers).json()
+        client.delete("/files/f9/share", headers=headers)
+
+        resp = client.get(f"/files/shared/{created['token']}")
+        assert resp.status_code == 404
