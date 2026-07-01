@@ -52,3 +52,39 @@ def test_migration_noop_on_non_sqlite(tmp_path):
             raise AssertionError("postgres에서는 connect가 호출되면 안 됨")
 
     run_sqlite_migrations(FakeEngine())  # 예외 없이 그냥 리턴
+
+
+def test_migration_creates_unique_index_on_shared_token(tmp_path):
+    """마이그레이션 후 shared_token에 unique index가 생성되어야 한다."""
+    db_path = tmp_path / "old.db"
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "CREATE TABLE files ("
+            "id VARCHAR PRIMARY KEY, user_id VARCHAR, name VARCHAR, "
+            "gp5_path VARCHAR, created_at DATETIME, updated_at DATETIME)"
+        ))
+        conn.commit()
+
+    run_sqlite_migrations(engine)
+
+    # 첫 번째 row insert 성공
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "INSERT INTO files (id, user_id, name, shared_token) "
+            "VALUES ('id1', 'user1', 'file1', 'token123')"
+        ))
+        conn.commit()
+
+    # 두 번째 row (같은 shared_token) insert 실패해야 함
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(
+                "INSERT INTO files (id, user_id, name, shared_token) "
+                "VALUES ('id2', 'user2', 'file2', 'token123')"
+            ))
+            conn.commit()
+            raise AssertionError("중복 shared_token insert가 실패해야 하는데 성공함")
+        except sa.exc.IntegrityError:
+            # 예상된 동작: unique constraint 위반
+            pass

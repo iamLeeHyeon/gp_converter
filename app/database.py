@@ -34,6 +34,7 @@ def run_sqlite_migrations(engine) -> None:
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(files)"))}
         if "shared_token" not in cols:
             conn.execute(text("ALTER TABLE files ADD COLUMN shared_token VARCHAR"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_files_shared_token ON files (shared_token)"))
         if "shared_expires_at" not in cols:
             conn.execute(text("ALTER TABLE files ADD COLUMN shared_expires_at DATETIME"))
         conn.commit()
