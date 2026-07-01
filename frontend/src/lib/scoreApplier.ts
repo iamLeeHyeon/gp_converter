@@ -1,4 +1,4 @@
-import type { NotePosition, Effect, Dynamic, ScoreSnapshot } from './scoreTypes'
+import type { NotePosition, Effect, Dynamic } from './scoreTypes'
 
 export type EditPayload =
   | { type: 'fret'; value: number }
@@ -79,41 +79,4 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
       if (slideVal.slideOutType !== undefined) note.slideOutType = slideVal.slideOutType
     }
   }
-}
-
-// Undo/Redo: 스냅샷 전체를 Score에 반영
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applySnapshot(score: any, snap: ScoreSnapshot): void {
-  snap.tracks.forEach((tsnap, ti) => {
-    const staff = score.tracks[ti]?.staves[0]
-    if (!staff) return
-    tsnap.measures.forEach((msnap, mi) => {
-      const voice = staff.bars[mi]?.voices[0]
-      if (!voice) return
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      voice.beats.forEach((beat: any, bi: number) => {
-        const bsnap = msnap.beats[bi]
-        if (!bsnap) return
-        beat.duration.value = bsnap.duration
-        beat.duration.isDotted = bsnap.dotted
-        // beat.isRest는 getter 전용 — notes 배열로 alphaTab이 자동 결정
-        beat.dynamics = DYNAMIC_INDICES[bsnap.dynamic ?? 'mf'] ?? 4
-        beat.pickStroke = bsnap.strumDown === true ? 2 : bsnap.strumDown === false ? 1 : 0
-        beat.notes = bsnap.notes.map((nsnap: { string: number; fret: number; effect?: Effect }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const note: any = { string: nsnap.string, fret: nsnap.fret, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0 }
-          if (nsnap.effect === 'hammer-on' || nsnap.effect === 'pull-off') note.isHammerPullOrigin = true
-          else if (nsnap.effect === 'ghost') note.isGhost = true
-          else if (nsnap.effect === 'mute') note.isDead = true
-          else if (nsnap.effect === 'harmonic') note.harmonicType = 1
-          else if (nsnap.effect && EFFECT_SLIDE_MAP[nsnap.effect]) {
-            const slideVal = EFFECT_SLIDE_MAP[nsnap.effect]!
-            if (slideVal.slideInType !== undefined) note.slideInType = slideVal.slideInType
-            if (slideVal.slideOutType !== undefined) note.slideOutType = slideVal.slideOutType
-          }
-          return note
-        })
-      })
-    })
-  })
 }

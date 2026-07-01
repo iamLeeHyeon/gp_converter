@@ -3,13 +3,14 @@ import { initAlphaTab } from '../../lib/alphatab'
 import type * as alphaTab from '@coderline/alphatab'
 import { useEditorStore } from '../../store/editorStore'
 import { serializeScore } from '../../lib/scoreSerializer'
-import { applyEdit, applySnapshot, type EditPayload } from '../../lib/scoreApplier'
+import { applyEdit, type EditPayload } from '../../lib/scoreApplier'
 import { useSyncFile } from '../../lib/useSyncFile'
+import { api } from '../../lib/api'
 import EditPanel from './EditPanel'
 import ExportMenu from './ExportMenu'
 import StructurePanel from './StructurePanel'
 import TrackPanel from './TrackPanel'
-import type { NotePosition, Dynamic, Effect } from '../../lib/scoreTypes'
+import type { NotePosition, Dynamic, Effect, ScoreSnapshot } from '../../lib/scoreTypes'
 
 interface Props {
   gp5Buffer: ArrayBuffer | null
@@ -22,7 +23,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   const [loaded, setLoaded] = useState(false)
   const [leftTab, setLeftTab] = useState<'files' | 'tracks'>('files')
 
-  const { selected, fileId, present, saveStatus, setSelected, pushSnapshot, undo, redo } = useEditorStore()
+  const { selected, fileId, present, saveStatus, setSelected, pushSnapshot, undo, redo, setGp5Buffer, setSaveStatus } = useEditorStore()
   const storeGp5Buffer = useEditorStore(s => s.gp5Buffer)
 
   // 현재 선택된 beat/note 정보 추출
@@ -72,6 +73,20 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
     apiRef.current.render()
   }, [selected, pushSnapshot])
 
+  // undo/redo: 구조 편집(마디/트랙 추가삭제 등)은 alphaTab 인플레이스 반영 불가 → 백엔드 재동기화 후 리로드
+  const syncAndReload = useCallback(async (snap: ScoreSnapshot) => {
+    if (!fileId) return
+    try {
+      setSaveStatus('saving')
+      await api.syncFile(fileId, snap)
+      const buf = await api.getGP5Buffer(fileId)
+      setGp5Buffer(buf)
+      setSaveStatus('saved')
+    } catch {
+      setSaveStatus('error')
+    }
+  }, [fileId, setGp5Buffer, setSaveStatus])
+
   // 자동저장
   useSyncFile(fileId, present)
 
@@ -112,24 +127,18 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       if (mod && !e.shiftKey && e.key === 'z') {
         e.preventDefault()
         const prev = undo()
-        if (prev && apiRef.current?.score) {
-          applySnapshot(apiRef.current.score, prev)
-          apiRef.current.render()
-        }
+        if (prev) syncAndReload(prev)
       } else if (mod && (e.shiftKey && e.key === 'z' || e.key === 'y')) {
         e.preventDefault()
         const next = redo()
-        if (next && apiRef.current?.score) {
-          applySnapshot(apiRef.current.score, next)
-          apiRef.current.render()
-        }
+        if (next) syncAndReload(next)
       } else if (e.key === 'Delete' && selected) {
         commitEdit({ type: 'deleteNote' })
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [undo, redo, selected, commitEdit])
+  }, [undo, redo, selected, commitEdit, syncAndReload])
 
   // 구조 편집 후 store gp5Buffer 변경 시 alphaTab 리로드
   useEffect(() => {

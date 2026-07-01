@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '../../store/editorStore'
 import { applyStructuralEdit } from '../../lib/structuralEdit'
 import { api } from '../../lib/api'
+import type { ScoreSnapshot } from '../../lib/scoreTypes'
+
+const NAME_SYNC_DEBOUNCE_MS = 500
 
 const TUNING_PRESETS: Record<string, number[]> = {
   'Standard E': [64, 59, 55, 50, 45, 40],
@@ -22,20 +25,21 @@ export default function TrackPanel() {
   const { present, selectedTrackIndex, activeVoice, fileId, pushSnapshot, setGp5Buffer, setSaveStatus } =
     useEditorStore()
   const [busy, setBusy] = useState(false)
+  const nameSyncTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  useEffect(() => () => clearTimeout(nameSyncTimer.current), [])
 
   if (!present) return null
 
   const tracks = present.tracks
   const track = tracks[selectedTrackIndex]
 
-  async function applyAndSync(edit: Parameters<typeof applyStructuralEdit>[1]) {
-    if (!present || !fileId) return
-    const next = applyStructuralEdit(present, edit)
-    pushSnapshot(next)
+  async function syncSnapshot(snap: ScoreSnapshot) {
+    if (!fileId) return
     setBusy(true)
     try {
       setSaveStatus('saving')
-      await api.syncFile(fileId, next)
+      await api.syncFile(fileId, snap)
       const buf = await api.getGP5Buffer(fileId)
       setGp5Buffer(buf)
       setSaveStatus('saved')
@@ -44,6 +48,26 @@ export default function TrackPanel() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function applyAndSync(edit: Parameters<typeof applyStructuralEdit>[1]) {
+    if (!present || !fileId) return
+    const next = applyStructuralEdit(present, edit)
+    pushSnapshot(next)
+    const newLen = next.tracks.length
+    if (selectedTrackIndex > newLen - 1) {
+      useEditorStore.setState({ selectedTrackIndex: Math.max(0, newLen - 1) })
+    }
+    await syncSnapshot(next)
+  }
+
+  // 이름 입력은 로컬 반영은 즉시, 백엔드 재동기화(+alphaTab 리로드)는 디바운스
+  function handleNameChange(name: string) {
+    if (!present) return
+    const next = applyStructuralEdit(present, { type: 'setTrackName', trackIndex: selectedTrackIndex, name })
+    pushSnapshot(next)
+    clearTimeout(nameSyncTimer.current)
+    nameSyncTimer.current = setTimeout(() => { syncSnapshot(next) }, NAME_SYNC_DEBOUNCE_MS)
   }
 
   const currentPreset = detectPreset(track?.tuning)
@@ -89,7 +113,7 @@ export default function TrackPanel() {
               type="text"
               style={{ marginLeft: 4, width: 100 }}
               value={track.name ?? ''}
-              onChange={e => applyAndSync({ type: 'setTrackName', trackIndex: selectedTrackIndex, name: e.target.value })}
+              onChange={e => handleNameChange(e.target.value)}
             />
           </label>
 

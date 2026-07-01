@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { useEditorStore } from '../store/editorStore'
@@ -66,5 +66,44 @@ describe('TrackPanel', () => {
     render(<TrackPanel />)
     await userEvent.click(screen.getByRole('button', { name: /트랙 추가/i }))
     expect(api.syncFile).toHaveBeenCalledOnce()
+  })
+
+  it('이름 입력 → 500ms 디바운스 후 1회만 syncFile 호출', async () => {
+    const { api } = await import('../lib/api')
+    render(<TrackPanel />)
+    const input = screen.getByLabelText(/이름/i)
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.change(input, { target: { value: 'L' } })
+      fireEvent.change(input, { target: { value: 'Le' } })
+      fireEvent.change(input, { target: { value: 'Lea' } })
+      fireEvent.change(input, { target: { value: 'Lead' } })
+
+      expect(api.syncFile).not.toHaveBeenCalled() // 디바운스 중에는 호출 안 됨
+
+      await vi.advanceTimersByTimeAsync(500)
+
+      expect(api.syncFile).toHaveBeenCalledOnce()
+      expect(api.syncFile).toHaveBeenCalledWith('f1', expect.objectContaining({
+        tracks: [expect.objectContaining({ name: 'Lead' })],
+      }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('마지막 트랙 선택 후 삭제 → selectedTrackIndex가 새 길이 범위로 클램프', async () => {
+    const snap2: ScoreSnapshot = {
+      tracks: [
+        { name: 'Guitar', tuning: [64, 59, 55, 50, 45, 40], capo: 0, measures: snap1.tracks[0].measures },
+        { name: 'Bass', tuning: [43, 38, 33, 28], capo: 0, measures: snap1.tracks[0].measures },
+      ],
+    }
+    useEditorStore.setState({ present: snap2, selectedTrackIndex: 1, fileId: 'f1' } as any)
+    render(<TrackPanel />)
+    const deleteButtons = screen.getAllByRole('button', { name: '×' })
+    await userEvent.click(deleteButtons[1]) // 트랙 2 (index 1) 삭제 → 남은 1개, 유효 인덱스 0
+    expect(useEditorStore.getState().selectedTrackIndex).toBe(0)
   })
 })

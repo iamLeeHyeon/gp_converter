@@ -25,6 +25,10 @@ export default function StructurePanel() {
     setBusy(true)
     const next = applyStructuralEdit(present, edit)
     pushSnapshot(next)
+    const newLen = next.tracks[0]?.measures.length ?? 0
+    if (selectedMeasureIndex > newLen - 1) {
+      useEditorStore.setState({ selectedMeasureIndex: Math.max(0, newLen - 1) })
+    }
     try {
       setSaveStatus('saving')
       await api.syncFile(fileId, next)

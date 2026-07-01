@@ -76,4 +76,12 @@ describe('StructurePanel', () => {
     await userEvent.click(deleteButtons[0])
     expect(api.syncFile).toHaveBeenCalledOnce()
   })
+
+  it('마지막 마디 선택 후 삭제 → selectedMeasureIndex가 새 길이 범위로 클램프', async () => {
+    useEditorStore.setState({ present: snap2, selectedMeasureIndex: 1, fileId: 'f1' } as any)
+    render(<StructurePanel />)
+    const deleteButtons = screen.getAllByRole('button', { name: /삭제/i })
+    await userEvent.click(deleteButtons[1]) // 마디 2 (index 1) 삭제 → 남은 1개, 유효 인덱스 0
+    expect(useEditorStore.getState().selectedMeasureIndex).toBe(0)
+  })
 })
