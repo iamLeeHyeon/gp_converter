@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type ShareInfo } from '../../lib/api'
 
 interface Props {
@@ -11,34 +11,45 @@ export default function ShareModal({ fileId, onClose }: Props) {
   const [loading, setLoading] = useState(true)
   const [expiresInDays, setExpiresInDays] = useState<7 | 30 | null>(7)
   const [copied, setCopied] = useState(false)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     api.getShareStatus(fileId)
-      .then(res => { if (!cancelled) setInfo(res) })
-      .finally(() => { if (!cancelled) setLoading(false) })
+      .then(res => { if (!cancelled && isMountedRef.current) setInfo(res) })
+      .finally(() => { if (!cancelled && isMountedRef.current) setLoading(false) })
     return () => { cancelled = true }
   }, [fileId])
 
   async function handleCreate() {
     setLoading(true)
     const res = await api.createShareLink(fileId, expiresInDays)
-    setInfo(res)
-    setLoading(false)
+    if (isMountedRef.current) {
+      setInfo(res)
+      setLoading(false)
+    }
   }
 
   async function handleRevoke() {
     setLoading(true)
     await api.revokeShareLink(fileId)
-    setInfo({ token: null, expires_at: null })
-    setLoading(false)
+    if (isMountedRef.current) {
+      setInfo({ token: null, expires_at: null })
+      setLoading(false)
+    }
   }
 
   function handleCopy() {
     if (!info?.token) return
     navigator.clipboard.writeText(`${window.location.origin}/share/${info.token}`)
     setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    setTimeout(() => {
+      if (isMountedRef.current) setCopied(false)
+    }, 1500)
   }
 
   return (
