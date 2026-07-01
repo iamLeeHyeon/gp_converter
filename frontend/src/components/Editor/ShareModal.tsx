@@ -27,19 +27,25 @@ export default function ShareModal({ fileId, onClose }: Props) {
 
   async function handleCreate() {
     setLoading(true)
-    const res = await api.createShareLink(fileId, expiresInDays)
-    if (isMountedRef.current) {
-      setInfo(res)
-      setLoading(false)
+    try {
+      const res = await api.createShareLink(fileId, expiresInDays)
+      if (isMountedRef.current) setInfo(res)
+    } catch (e) {
+      console.error('공유 링크 생성 실패', e)
+    } finally {
+      if (isMountedRef.current) setLoading(false)
     }
   }
 
   async function handleRevoke() {
     setLoading(true)
-    await api.revokeShareLink(fileId)
-    if (isMountedRef.current) {
-      setInfo({ token: null, expires_at: null })
-      setLoading(false)
+    try {
+      await api.revokeShareLink(fileId)
+      if (isMountedRef.current) setInfo({ token: null, expires_at: null })
+    } catch (e) {
+      console.error('공유 중단 실패', e)
+    } finally {
+      if (isMountedRef.current) setLoading(false)
     }
   }
 

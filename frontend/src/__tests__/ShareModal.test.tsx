@@ -165,6 +165,40 @@ describe('ShareModal', () => {
     expect(stateTracking.totalCalls).toBe(callsBeforeUnmount)
   })
 
+  it('링크 생성 실패 시 로딩 상태 풀리고 생성 버튼으로 복귀', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.getShareStatus).mockResolvedValue({ token: null, expires_at: null })
+    vi.mocked(api.createShareLink).mockRejectedValue(new Error('network error'))
+
+    render(<ShareModal fileId="f1" onClose={onClose} />)
+    const createBtn = await screen.findByRole('button', { name: /링크 생성/i })
+    await userEvent.click(createBtn)
+
+    expect(api.createShareLink).toHaveBeenCalledWith('f1', 7)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /링크 생성/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('로딩 중…')).not.toBeInTheDocument()
+  })
+
+  it('공유 중단 실패 시 로딩 상태 풀리고 기존 링크 화면 유지', async () => {
+    const { api } = await import('../lib/api')
+    vi.mocked(api.getShareStatus).mockResolvedValue({
+      token: 'existing-token', expires_at: null,
+    })
+    vi.mocked(api.revokeShareLink).mockRejectedValue(new Error('network error'))
+
+    render(<ShareModal fileId="f1" onClose={onClose} />)
+    const revokeBtn = await screen.findByRole('button', { name: /공유 중단/i })
+    await userEvent.click(revokeBtn)
+
+    expect(api.revokeShareLink).toHaveBeenCalledWith('f1')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /공유 중단/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('로딩 중…')).not.toBeInTheDocument()
+  })
+
   it('handleCopy: 언마운트 후 1500ms 타이머 발동해도 setState 호출 안 됨 (isMountedRef 가드 검증)', async () => {
     const { api } = await import('../lib/api')
     vi.mocked(api.getShareStatus).mockResolvedValue({
