@@ -5,6 +5,7 @@ import { useEditorStore } from './store/editorStore'
 import LoginPage from './components/Auth/LoginPage'
 import OAuthCallback from './components/Auth/OAuthCallback'
 import ScoreViewer from './components/Editor/ScoreViewer'
+import SharedScoreViewer from './components/Editor/SharedScoreViewer'
 import UploadButton from './components/FileManager/UploadButton'
 import FileList from './components/FileManager/FileList'
 
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<OAuthCallback />} />
         <Route path="/" element={<MainPage />} />
+        <Route path="/share/:token" element={<SharedScoreViewer />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
