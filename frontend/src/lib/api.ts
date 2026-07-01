@@ -6,6 +6,11 @@ export interface FileRecord {
   created_at: string
 }
 
+export interface ShareInfo {
+  token: string | null
+  expires_at: string | null
+}
+
 function getToken(): string {
   return localStorage.getItem('access_token') ?? ''
 }
@@ -91,5 +96,30 @@ export const api = {
 
   async downloadMIDI(fileId: string, filename: string): Promise<void> {
     await downloadBlob(`/files/${fileId}/export/midi`, filename)
+  },
+
+  async getShareStatus(fileId: string): Promise<ShareInfo> {
+    return request<ShareInfo>(`/files/${fileId}/share`)
+  },
+
+  async createShareLink(fileId: string, expiresInDays: 7 | 30 | null): Promise<ShareInfo> {
+    return request<ShareInfo>(`/files/${fileId}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expires_in_days: expiresInDays }),
+    })
+  },
+
+  async revokeShareLink(fileId: string): Promise<void> {
+    await request<unknown>(`/files/${fileId}/share`, { method: 'DELETE' })
+  },
+
+  async fetchSharedGP5(token: string): Promise<ArrayBuffer> {
+    const res = await fetch(`/files/shared/${token}`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.detail ?? `HTTP ${res.status}`)
+    }
+    return res.arrayBuffer()
   },
 }
