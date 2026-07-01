@@ -70,6 +70,17 @@ class TestSnapshotV2MeasureAttrs:
         assert len(note_ons) >= 1
 
 
+class TestFirstTrackName:
+    def test_first_track_name_from_snapshot(self, tmp_path):
+        """첫 트랙 이름이 스냅샷에서 읽혀야 함."""
+        snap = _snap_1track_1measure()
+        snap["tracks"][0]["name"] = "Bass"
+        path = str(tmp_path / "named.gp5")
+        snapshot_to_gp5(snap, path)
+        song = gpm.parse(path)
+        assert song.tracks[0].name == "Bass"
+
+
 class TestSnapshotV2MultiTrack:
     def test_two_tracks_written(self, tmp_path):
         """2개 트랙 스냅샷 → GP5에 2개 트랙."""

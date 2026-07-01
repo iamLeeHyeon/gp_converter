@@ -7,7 +7,7 @@ function mockBeat(isRest = false) {
     isRest,
     pickStroke: 0,
     notes: isRest ? [] : [{ string: 1, fret: 5, isHammerPullOrigin: false, isDead: false, isGhost: false, harmonicType: 0, slideOutType: 0, slideInType: 0 }],
-    velocity: 95,
+    dynamics: 4,
   }
 }
 

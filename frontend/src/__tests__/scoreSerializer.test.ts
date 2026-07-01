@@ -15,7 +15,7 @@ function makeBeat(overrides: Record<string, unknown> = {}) {
   return {
     duration: { value: 4, isDotted: false },
     isRest: false,
-    velocity: 4,      // 4 = mf
+    dynamics: 4,      // 4 = mf (alphaTab DynamicValue enum)
     pickStroke: 0,    // 0 = None
     notes: [makeNote()],
     ...overrides,
@@ -69,13 +69,13 @@ describe('serializeScore', () => {
 
   it('strumDown=true를 직렬화한다', async () => {
     const { serializeScore } = await import('../lib/scoreSerializer')
-    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 1 })]))  // 1 = Down (strumDown=true)
+    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 2 })]))  // 2 = Down (strumDown=true)
     expect(snap.tracks[0].measures[0].beats[0].strumDown).toBe(true)
   })
 
   it('strumUp=false를 직렬화한다', async () => {
     const { serializeScore } = await import('../lib/scoreSerializer')
-    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 2 })]))  // 2 = Up (strumDown=false)
+    const snap = serializeScore(makeScore([makeBeat({ pickStroke: 1 })]))  // 1 = Up (strumDown=false)
     expect(snap.tracks[0].measures[0].beats[0].strumDown).toBe(false)
   })
 

@@ -42,8 +42,8 @@ function serializeBeat(beat: any): SnapshotBeat {
     dotted: beat.duration.isDotted as boolean,
     status: beat.isRest ? 'rest' : 'normal',
     notes,
-    strumDown: pickStroke === 1 ? true : pickStroke === 2 ? false : undefined,
-    dynamic: DYNAMIC_VALUES[beat.velocity as number],
+    strumDown: pickStroke === 2 ? true : pickStroke === 1 ? false : undefined,
+    dynamic: DYNAMIC_VALUES[(beat.dynamics as number) ?? 4] ?? 'mf',
   }
 }
 

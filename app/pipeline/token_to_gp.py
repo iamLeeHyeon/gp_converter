@@ -376,7 +376,7 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
 
     song = gpm.Song()
     track = song.tracks[0]
-    track.name = "Guitar"
+    track.name = tracks_data[0].get("name", "Guitar")
 
     def _fill_voice_beats(voice: gpm.Voice, beats_data: list, expected: float) -> None:
         """beats_data 리스트를 voice 객체에 채운다."""
