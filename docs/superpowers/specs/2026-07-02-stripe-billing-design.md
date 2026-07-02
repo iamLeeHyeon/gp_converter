@@ -13,7 +13,7 @@ Free/Pro 요금제를 도입해 사용량을 제한하고, Stripe로 Pro 구독 
 |------|------|
 | Free 플랜 | 월 3회 성공 변환, 저장 5개 |
 | Pro 플랜 | $4.99/월, 무제한 |
-| 변환 카운트 기준 | 성공한 변환만(job DONE). 실패/재시도는 카운트 안 함 |
+| 변환 카운트 기준 | 성공한 변환만. 실패/재시도는 카운트 안 함 |
 | 리셋 주기 | 가입일 기준 30일 롤링 (달력월 아님) — "최근 30일 내 성공 변환 수"로 매번 계산, 별도 카운터 컬럼 불필요 |
 | 저장 5개 | 시간 무관, 유저가 보유한 File 행 개수 총량. 삭제하면 슬롯 회수됨 |
 | 구독 해지/카드변경 | Stripe Customer Portal로 위임 (자체 UI 안 만듦) |
@@ -56,7 +56,9 @@ stripe_customer_id = Column(String, nullable=True, unique=True, index=True)
 
 ### 사용량 제한 적용
 
-- `GET /billing/usage`: `conversions_used` = 로그인 유저의 `DbJob` 중 `status=DONE`이고 `created_at >= now - 30days`인 행 개수. `files_used` = 해당 유저의 `File` 행 개수.
+- `GET /billing/usage`: `conversions_used` = 로그인 유저의 `File` 중 `gp5_path`가 비어있지 않고(`!= ""`) `created_at >= now - 30days`인 행 개수. `files_used` = 해당 유저의 `File` 행 총개수(성공 여부 무관).
+
+  **사전 조건(버그 수정 포함)**: 현재 `app/main.py`의 `/convert`는 로그인 유저용 `File` 행을 변환 시작 시점에 `gp5_path=""`로 미리 만들어두고, 변환이 실제로 끝나도 이 값을 채워주는 코드가 어디에도 없다(`app/worker.py`의 `process_job`은 인메모리 `JobStore`만 갱신하고 DB `File` 행은 건드리지 않음). 즉 "성공한 변환"을 판별할 방법이 현재 코드베이스에 없다 — 이 스펙의 사용량 카운트가 정상 동작하려면 `process_job`이 변환 성공 시 해당 `File.gp5_path`를 실제 결과 경로로 갱신하도록 먼저 고쳐야 한다(플랜 Task 1). 결제 기능과 별개의 기존 버그지만, 이 기능이 의존하므로 최소 범위로 함께 고친다.
 - `POST /convert` (`app/main.py`, 기존): 로그인 유저이고 `plan=="free"`이면, 작업 시작 전에 위와 동일한 방식으로 최근 30일 성공 변환 수를 세고 3 이상이면 402 `"무료 플랜 월 변환 한도(3회)를 초과했습니다"` 반환. 파일 저장 5개 제한도 같은 자리에서 체크(File 카운트 ≥5 → 402).
 - Pro 유저는 무제한이라 위 체크를 건너뜀.
 
