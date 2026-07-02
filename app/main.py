@@ -129,6 +129,7 @@ async def convert(
         audiveris_cmd=settings.audiveris_cmd,
         tuxguitar_cmd=settings.tuxguitar_cmd,
         timeout=settings.step_timeout_sec,
+        file_id=file_id,
     )
     return {"job_id": job.id, "file_id": file_id}
 
