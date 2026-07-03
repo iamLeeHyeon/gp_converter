@@ -60,8 +60,10 @@ export CELERY_BROKER_URL=redis://localhost:6379/0
 별도 터미널에서 워커를 띄운다(동시 처리 개수는 `--concurrency`로 조절):
 
 ```bash
-celery -A app.celery_app worker --loglevel=info --concurrency=2
+celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
 ```
+
+**주의:** `-A app.celery_app`이 아니라 `-A app.tasks:celery_app`으로 띄워야 한다. `app/celery_app.py`는 Celery 앱 인스턴스만 정의하고 `process_job_task`는 `app/tasks.py`에 정의되는데, 워커 프로세스가 `-A app.celery_app`로만 뜨면 `app/tasks.py`를 임포트한 적이 없어 task 자체를 모른다(`celery -A app.celery_app worker` → `[tasks]` 목록이 비어있고, 실제 작업을 보내면 `KeyError: 'gp_converter.process_job'`로 워커가 거부한다). `app.tasks`를 진입점으로 지정해야 그 모듈이 임포트되면서 `celery_app`을 가져오고 task 데코레이터가 실행돼 등록된다.
 
 ### 4. 서버 실행
 
