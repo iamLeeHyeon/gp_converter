@@ -70,6 +70,14 @@ docker run --rm --platform linux/amd64 -p 8000:8000 gp-converter
 | `GPC_MAX_UPLOAD_BYTES` | `20971520`(20MB) | 업로드 최대 용량 |
 | `GPC_STEP_TIMEOUT_SEC` | `300` | 변환 단계별 타임아웃(초) |
 | `GPC_JOBS_DIR` | `<cwd>/jobs` | job 작업 디렉토리 |
+| `STRIPE_SECRET_KEY` | 없음(필수) | Stripe API 시크릿 키 |
+| `STRIPE_WEBHOOK_SECRET` | 없음(필수) | Stripe 웹훅 서명 검증 시크릿 |
+| `STRIPE_PRICE_ID_PRO` | 없음(필수) | Pro 플랜(월 $4.99) 구독 Price ID |
+| `JWT_SECRET_KEY` | 없음(필수) | 로그인 세션 JWT 서명 시크릿 |
+| `GOOGLE_CLIENT_ID` | 없음 | Google OAuth 클라이언트 ID |
+| `GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth 클라이언트 시크릿 |
+| `GITHUB_CLIENT_ID` | 없음 | GitHub OAuth 클라이언트 ID |
+| `GITHUB_CLIENT_SECRET` | 없음 | GitHub OAuth 클라이언트 시크릿 |
 
 ## 테스트
 
