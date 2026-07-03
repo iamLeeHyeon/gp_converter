@@ -8,6 +8,7 @@ import ScoreViewer from './components/Editor/ScoreViewer'
 import SharedScoreViewer from './components/Editor/SharedScoreViewer'
 import UploadButton from './components/FileManager/UploadButton'
 import FileList from './components/FileManager/FileList'
+import BillingPanel from './components/Billing/BillingPanel'
 
 function MainPage() {
   const [gp5Buffer, setGp5Buffer] = useState<ArrayBuffer | null>(null)
@@ -42,6 +43,7 @@ function MainPage() {
         {token && (
           <button onClick={logout} style={{ marginTop: 16, fontSize: 12 }}>로그아웃</button>
         )}
+        {token && <BillingPanel />}
       </aside>
 
       {/* 메인 편집 영역 */}
