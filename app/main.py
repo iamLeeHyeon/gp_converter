@@ -7,7 +7,7 @@ from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
+from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +24,7 @@ from app.routers.edit import router as edit_router
 from app.routers.export import router as export_router
 from app.routers.share import router as share_router
 from app.routers.billing import router as billing_router, count_usage, FREE_CONVERSIONS_LIMIT, FREE_FILES_LIMIT
-from app.worker import process_job
+from app.tasks import process_job_task
 
 # DB 테이블 자동 생성 + 기존 테이블 컬럼 마이그레이션
 Base.metadata.create_all(bind=engine)
@@ -79,7 +79,6 @@ async def get_optional_user(request: Request, db: Session = Depends(get_db)) -> 
 
 @app.post("/convert")
 async def convert(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings),
     store: JobStore = Depends(get_store),
@@ -141,8 +140,8 @@ async def convert(
         db.refresh(db_file)
         file_id = db_file.id
 
-    background_tasks.add_task(
-        process_job, store, job.id, pdf_path,
+    process_job_task.delay(
+        settings.jobs_dir, job.id, pdf_path,
         audiveris_cmd=settings.audiveris_cmd,
         tuxguitar_cmd=settings.tuxguitar_cmd,
         timeout=settings.step_timeout_sec,

@@ -43,13 +43,35 @@ pip install -r requirements.txt
 export GPC_AUDIVERIS_CMD=/Applications/Audiveris.app/Contents/MacOS/Audiveris
 ```
 
-### 3. 서버 실행
+### 3. Redis + Celery 워커 실행
+
+변환 작업은 Celery 워커가 처리한다. 로컬에서 Redis를 띄운다:
+
+```bash
+docker run --rm -p 6379:6379 redis:7-alpine
+```
+
+브로커 주소가 기본값(`redis://localhost:6379/0`)과 다르면 환경변수로 지정한다:
+
+```bash
+export CELERY_BROKER_URL=redis://localhost:6379/0
+```
+
+별도 터미널에서 워커를 띄운다(동시 처리 개수는 `--concurrency`로 조절):
+
+```bash
+celery -A app.celery_app worker --loglevel=info --concurrency=2
+```
+
+### 4. 서버 실행
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
 브라우저에서 `http://localhost:8000` 접속 → PDF 업로드 → 변환 완료되면 `.gp5` 다운로드.
+
+**주의:** Celery 워커가 떠 있지 않으면 `/convert`는 job을 큐에 넣기만 하고 실제 변환은 영영 시작되지 않는다(`GET /jobs/{id}`가 `queued`에서 안 넘어감).
 
 ## Docker로 실행하기
 
@@ -70,6 +92,7 @@ docker run --rm --platform linux/amd64 -p 8000:8000 gp-converter
 | `GPC_MAX_UPLOAD_BYTES` | `20971520`(20MB) | 업로드 최대 용량 |
 | `GPC_STEP_TIMEOUT_SEC` | `300` | 변환 단계별 타임아웃(초) |
 | `GPC_JOBS_DIR` | `<cwd>/jobs` | job 작업 디렉토리 |
+| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Celery 브로커(Redis) 주소 |
 | `STRIPE_SECRET_KEY` | 없음(필수) | Stripe API 시크릿 키 |
 | `STRIPE_WEBHOOK_SECRET` | 없음(필수) | Stripe 웹훅 서명 검증 시크릿 |
 | `STRIPE_PRICE_ID_PRO` | 없음(필수) | Pro 플랜(월 $4.99) 구독 Price ID |
@@ -105,6 +128,8 @@ app/
     musicxml_to_gp.py    # MusicXML → .gp5 (music21 + PyGuitarPro)
     orchestrator.py       # 위 두 단계를 연결
   worker.py              # 백그라운드 변환 실행
+  celery_app.py          # Celery 앱 인스턴스 (브로커 설정)
+  tasks.py               # Celery task 래퍼 (process_job 위임)
   main.py                # FastAPI 앱
 static/
   index.html             # 업로드/다운로드 프론트엔드

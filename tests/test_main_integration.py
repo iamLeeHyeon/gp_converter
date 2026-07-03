@@ -1,4 +1,5 @@
 import os, pytest, io
+from unittest.mock import patch
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-32chars-minimum!!")
 os.environ.setdefault("GOOGLE_CLIENT_ID", "g-id")
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "g-secret")
@@ -47,7 +48,8 @@ def test_cors_header_present():
 
 def test_convert_returns_job_id():
     fake_pdf = b"%PDF-1.4 fake"
-    r = client.post("/convert", files={"file": ("t.pdf", io.BytesIO(fake_pdf), "application/pdf")})
+    with patch("app.main.process_job_task.delay"):
+        r = client.post("/convert", files={"file": ("t.pdf", io.BytesIO(fake_pdf), "application/pdf")})
     assert r.status_code == 200
     assert "job_id" in r.json()
 

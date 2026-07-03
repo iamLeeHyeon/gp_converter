@@ -44,13 +44,15 @@ def test_convert_rejects_non_pdf(tmp_path):
 def test_convert_then_status_then_result(tmp_path):
     client, m = make_client(tmp_path)
 
-    # 백그라운드 태스크가 즉시 동기 실행되도록 process_job을 패치
-    def fake_process(store, job_id, pdf_path, **kwargs):
+    # Celery task 디스패치(.delay)가 즉시 동기 실행되도록 패치
+    def fake_delay(jobs_dir, job_id, pdf_path, **kwargs):
+        from app.jobs import JobStore
+        store = JobStore(jobs_dir)
         gp5 = tmp_path / "r.gp5"
         gp5.write_bytes(b"FICHIER GUITAR PRO")
         store.update(job_id, status=m.JobStatus.DONE, result_path=str(gp5))
 
-    with patch("app.main.process_job", side_effect=fake_process):
+    with patch("app.main.process_job_task.delay", side_effect=fake_delay):
         r = client.post("/convert", files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")})
         assert r.status_code == 200
         job_id = r.json()["job_id"]
@@ -70,12 +72,12 @@ def test_status_missing_job_404(tmp_path):
 
 
 def test_result_not_done_returns_409(tmp_path):
-    # process_job is a no-op so the job stays in "queued" state
-    def noop_process(store, job_id, pdf_path, **kwargs):
+    # 큐 디스패치가 no-op이라 job은 "queued" 상태로 남는다
+    def noop_delay(jobs_dir, job_id, pdf_path, **kwargs):
         pass
 
     client, _ = make_client(tmp_path)
-    with patch("app.main.process_job", side_effect=noop_process):
+    with patch("app.main.process_job_task.delay", side_effect=noop_delay):
         r = client.post("/convert", files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")})
         assert r.status_code == 200
         job_id = r.json()["job_id"]
@@ -120,11 +122,11 @@ def test_accepted_upload_content_fully_written(tmp_path):
     client, _ = make_client(tmp_path)
     body = b"%PDF-1.4 " + b"x" * (2 * 1024 * 1024)  # 청크 경계를 넘는 크기
 
-    def noop_process(store, job_id, pdf_path, **kwargs):
+    def noop_delay(jobs_dir, job_id, pdf_path, **kwargs):
         with open(pdf_path, "rb") as f:
             assert f.read() == body
 
-    with patch("app.main.process_job", side_effect=noop_process):
+    with patch("app.main.process_job_task.delay", side_effect=noop_delay):
         r = client.post("/convert", files={"file": ("a.pdf", body, "application/pdf")})
         assert r.status_code == 200
 
@@ -132,7 +134,8 @@ def test_accepted_upload_content_fully_written(tmp_path):
 def test_each_test_gets_isolated_jobs_dir(tmp_path):
     """dependency_overrides가 매 테스트마다 독립된 Settings를 주입해야 한다."""
     client, _ = make_client(tmp_path)
-    r = client.post("/convert", files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")})
+    with patch("app.main.process_job_task.delay"):
+        r = client.post("/convert", files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")})
     assert r.status_code == 200
     assert (tmp_path / "jobs").is_dir()
 
@@ -176,7 +179,7 @@ class TestConvertUsageLimits:
         db.close()
 
         token = create_access_token("cv-u2")
-        with patch("app.main.process_job"):
+        with patch("app.main.process_job_task.delay"):
             r = client.post(
                 "/convert",
                 files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
@@ -223,7 +226,7 @@ class TestConvertUsageLimits:
         db.close()
 
         token = create_access_token("cv-u5")
-        with patch("app.main.process_job"):
+        with patch("app.main.process_job_task.delay"):
             r = client.post(
                 "/convert",
                 files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
@@ -247,7 +250,7 @@ class TestConvertUsageLimits:
         db.close()
 
         token = create_access_token("cv-u4")
-        with patch("app.main.process_job"):
+        with patch("app.main.process_job_task.delay"):
             r = client.post(
                 "/convert",
                 files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
@@ -260,7 +263,7 @@ class TestConvertUsageLimits:
         from unittest.mock import patch
 
         client, _ = make_client(tmp_path)
-        with patch("app.main.process_job"):
+        with patch("app.main.process_job_task.delay"):
             r = client.post(
                 "/convert",
                 files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
