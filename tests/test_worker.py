@@ -94,3 +94,30 @@ def test_process_job_without_file_id_still_works(tmp_path):
 
     got = store.get(job.id)
     assert got.status == JobStatus.DONE
+
+
+def test_update_file_gp5_path_uses_storage_key_for_and_save_file(tmp_path):
+    from unittest.mock import MagicMock, patch
+    from app.database import SessionLocal
+    from app.models import User, File
+    from app.worker import _update_file_gp5_path
+
+    db = SessionLocal()
+    db.merge(User(id="w-u5", email="w5@x.com", provider="google", provider_id="w-u5"))
+    db.merge(File(id="w-f5", user_id="w-u5", name="test", gp5_path=""))
+    db.commit()
+    db.close()
+
+    fake_storage = MagicMock()
+    fake_storage.key_for.return_value = "custom-key.gp5"
+
+    with patch("app.worker.get_storage", return_value=fake_storage):
+        _update_file_gp5_path("w-f5", "/tmp/local-output.gp5")
+
+    fake_storage.key_for.assert_called_once_with("w-f5", "/tmp/local-output.gp5")
+    fake_storage.save_file.assert_called_once_with("custom-key.gp5", "/tmp/local-output.gp5")
+
+    db = SessionLocal()
+    updated = db.query(File).filter_by(id="w-f5").first()
+    assert updated.gp5_path == "custom-key.gp5"
+    db.close()
