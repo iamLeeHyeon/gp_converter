@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type UsageInfo } from '../../lib/api'
 
 export default function BillingPanel() {
   const [usage, setUsage] = useState<UsageInfo | null>(null)
   const [busy, setBusy] = useState(false)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -19,7 +24,7 @@ export default function BillingPanel() {
       const { url } = await api.createCheckoutSession()
       window.location.href = url
     } catch {
-      setBusy(false)
+      if (isMountedRef.current) setBusy(false)
     }
   }
 
@@ -29,7 +34,7 @@ export default function BillingPanel() {
       const { url } = await api.createPortalSession()
       window.location.href = url
     } catch {
-      setBusy(false)
+      if (isMountedRef.current) setBusy(false)
     }
   }
 
