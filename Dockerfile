@@ -1,5 +1,12 @@
 # Audiveris의 Linux 릴리스가 x86_64 전용이라 이 이미지는 반드시 linux/amd64로 빌드해야 한다.
 # docker build --platform linux/amd64 -t gp-converter .
+FROM node:20-slim AS frontend-build
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
 FROM python:3.11-slim-bookworm
 
 ARG AUDIVERIS_VERSION=5.10.2
@@ -34,7 +41,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY static ./static
+COPY --from=frontend-build /static ./static
 
 ENV GPC_JOBS_DIR=/srv/jobs
 EXPOSE 8000
