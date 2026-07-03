@@ -112,3 +112,31 @@ def test_sync_422_bad_json():
             )
         assert resp.status_code == 422
     db.close()
+
+
+def test_sync_delegates_to_storage_save_file():
+    from unittest.mock import MagicMock, patch
+    from app.database import SessionLocal
+    from app.models import User, File
+
+    db = SessionLocal()
+    user = User(id="u2", email="edit-storage@x.com", provider="google", provider_id="x")
+    file = File(id="f-storage-edit", user_id="u2", name="test", gp5_path="existing-key.gp5")
+    db.merge(user); db.merge(file); db.commit()
+    db.close()
+
+    token = _make_token("u2")
+    fake_storage = MagicMock()
+
+    with patch("app.routers.edit.snapshot_to_gp5"), \
+         patch("app.routers.edit.get_storage", return_value=fake_storage):
+        resp = client.post(
+            "/files/f-storage-edit/sync",
+            content=json.dumps(VALID_SNAPSHOT),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+
+    assert resp.status_code == 200
+    fake_storage.save_file.assert_called_once()
+    call_args = fake_storage.save_file.call_args[0]
+    assert call_args[0] == "existing-key.gp5"  # 기존 키 그대로 재사용(key_for 안 씀)

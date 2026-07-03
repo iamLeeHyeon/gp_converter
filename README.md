@@ -95,6 +95,9 @@ docker run --rm --platform linux/amd64 -p 8000:8000 gp-converter
 | `GPC_STEP_TIMEOUT_SEC` | `300` | 변환 단계별 타임아웃(초) |
 | `GPC_JOBS_DIR` | `<cwd>/jobs` | job 작업 디렉토리 |
 | `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Celery 브로커(Redis) 주소 |
+| `STORAGE_BACKEND` | `local` | 파일 저장 백엔드: `local` 또는 `s3` |
+| `S3_BUCKET_NAME` | 없음(s3일 때 필수) | S3 버킷 이름 |
+| `S3_ENDPOINT_URL` | 없음(비우면 AWS) | MinIO/R2 등 비-AWS S3 호환 엔드포인트 |
 | `STRIPE_SECRET_KEY` | 없음(필수) | Stripe API 시크릿 키 |
 | `STRIPE_WEBHOOK_SECRET` | 없음(필수) | Stripe 웹훅 서명 검증 시크릿 |
 | `STRIPE_PRICE_ID_PRO` | 없음(필수) | Pro 플랜(월 $4.99) 구독 Price ID |
@@ -125,6 +128,7 @@ pytest -m integration  # 실제 Audiveris로 전체 파이프라인 검증 (Audi
 app/
   config.py            # 환경변수 기반 설정
   jobs.py               # 파일 기반 job 상태 저장소
+  storage.py             # 파일 저장 추상화 (local/S3)
   pipeline/
     audiveris.py        # PDF → MusicXML (Audiveris subprocess)
     musicxml_to_gp.py    # MusicXML → .gp5 (music21 + PyGuitarPro)
@@ -146,3 +150,4 @@ docs/superpowers/        # 설계 문서 및 구현 계획
 - Audiveris OMR은 PDF 페이지 수에 비례해 느리다(예: 6페이지 ~7분).
 - **Celery 워커와 웹서버는 반드시 같은 `GPC_JOBS_DIR` 파일시스템을 공유해야 한다.** job 상태는 파일 기반(`JobStore`)이라, 워커를 다른 호스트/컨테이너로 분리 배포하면서 `jobs_dir`를 공유 볼륨으로 마운트하지 않으면 워커가 `store.get(job_id)`에서 `None`을 받아 아무 에러 없이 조용히 리턴한다 — job이 영원히 `queued`로 멈춘다. 단일 호스트(같은 서버에서 웹+워커 실행) 또는 web/worker가 같은 볼륨을 공유하는 docker-compose 구성에서는 문제 없다.
 - 익명(비로그인) `/convert`도 동일한 Redis 큐에 우선순위 구분 없이 쌓인다 — 무료플랜 사용량 제한은 로그인 유저에게만 적용되고 익명 요청은 우회하므로, 악의적으로 익명 요청을 대량으로 보내면 정상 유저의 job이 큐에서 밀릴 수 있다. 레이트리밋/우선순위 큐는 아직 없음(추후 과제).
+- `STORAGE_BACKEND`을 바꾸면(local↔s3) 이미 저장된 기존 파일은 자동 이관되지 않는다. 필요하면 수동으로 옮겨야 한다.

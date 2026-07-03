@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User, File
-import os
+from app.storage import get_storage
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -19,7 +19,8 @@ def delete_file(file_id: str, user: User = Depends(get_current_user), db: Sessio
     f = db.query(File).filter_by(id=file_id, user_id=user.id).first()
     if not f:
         raise HTTPException(status_code=404, detail="파일 없음")
-    if f.gp5_path and os.path.exists(f.gp5_path):
-        os.remove(f.gp5_path)
+    storage = get_storage()
+    if f.gp5_path and storage.exists(f.gp5_path):
+        storage.delete(f.gp5_path)
     db.delete(f)
     db.commit()

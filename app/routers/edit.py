@@ -6,6 +6,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User, File
 from app.pipeline.token_to_gp import snapshot_to_gp5
+from app.storage import get_storage
 
 router = APIRouter(prefix="/files", tags=["edit"])
 
@@ -24,16 +25,17 @@ def sync_file(
     if f.user_id != user.id:
         raise HTTPException(status_code=403, detail="접근 금지")
 
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix='.gp5')
+    os.close(tmp_fd)
     try:
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix='.gp5', dir=os.path.dirname(f.gp5_path))
         try:
-            os.close(tmp_fd)
             snapshot_to_gp5(snapshot, tmp_path)
-            os.replace(tmp_path, f.gp5_path)
-        except Exception:
-            os.unlink(tmp_path)
-            raise
-    except (ValueError, KeyError, TypeError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        except (ValueError, KeyError, TypeError) as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+        storage = get_storage()
+        storage.save_file(f.gp5_path, tmp_path)
+    finally:
+        os.unlink(tmp_path)
 
     return {"ok": True}
