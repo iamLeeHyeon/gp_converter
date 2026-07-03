@@ -215,7 +215,7 @@ class TestUsage:
         assert body["plan"] == "free"
         assert body["conversions_used"] == 2
         assert body["conversions_limit"] == 3
-        assert body["files_used"] == 3
+        assert body["files_used"] == 2
         assert body["files_limit"] == 5
 
     def test_old_conversions_excluded_from_30day_window(self):

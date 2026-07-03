@@ -31,6 +31,10 @@ FREE_FILES_LIMIT = 5
 def count_usage(db: Session, user_id: str) -> tuple[int, int]:
     """(최근 30일 성공 변환 수, 저장된 파일 총개수) 반환.
 
+    두 값 모두 gp5_path가 실제로 채워진(성공 변환) File 행만 카운트한다 —
+    실패/대기 중이라 gp5_path=""로 남은 행은 어느 쪽에도 포함되지 않는다.
+    차이는 시간 범위뿐이다: conversions_used는 최근 30일, files_used는 전체 기간.
+
     30일 컷오프는 timezone-naive UTC로 계산한다 — File.created_at이
     SQLite server_default(func.now())로 채워질 때 naive datetime 문자열로
     저장되므로, 비교 대상도 naive로 맞춰야 문자열 비교가 정확하다
@@ -42,7 +46,11 @@ def count_usage(db: Session, user_id: str) -> tuple[int, int]:
         .filter(File.user_id == user_id, File.gp5_path != "", File.created_at >= cutoff)
         .count()
     )
-    files_used = db.query(File).filter(File.user_id == user_id).count()
+    files_used = (
+        db.query(File)
+        .filter(File.user_id == user_id, File.gp5_path != "")
+        .count()
+    )
     return conversions_used, files_used
 
 

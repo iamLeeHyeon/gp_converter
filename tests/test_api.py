@@ -194,7 +194,7 @@ class TestConvertUsageLimits:
         db.merge(User(id="cv-u3", email="cv3@x.com", provider="google",
                        provider_id="cv-u3", plan="free"))
         for i in range(5):
-            db.merge(File(id=f"cv-f3-{i}", user_id="cv-u3", name="s", gp5_path=""))
+            db.merge(File(id=f"cv-f3-{i}", user_id="cv-u3", name="s", gp5_path=f"/x/{i}.gp5"))
         db.commit()
         db.close()
 
@@ -205,6 +205,31 @@ class TestConvertUsageLimits:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert r.status_code == 402
+
+    def test_free_user_not_blocked_by_failed_conversions(self, tmp_path):
+        """실패/대기(gp5_path="") 변환은 저장 한도(5개)에 카운트되면 안 된다."""
+        from unittest.mock import patch
+        from app.database import SessionLocal
+        from app.models import User, File
+        from app.auth import create_access_token
+
+        client, _ = make_client(tmp_path)
+        db = SessionLocal()
+        db.merge(User(id="cv-u5", email="cv5@x.com", provider="google",
+                       provider_id="cv-u5", plan="free"))
+        for i in range(5):
+            db.merge(File(id=f"cv-f5-{i}", user_id="cv-u5", name="s", gp5_path=""))
+        db.commit()
+        db.close()
+
+        token = create_access_token("cv-u5")
+        with patch("app.main.process_job"):
+            r = client.post(
+                "/convert",
+                files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert r.status_code == 200
 
     def test_pro_user_unlimited(self, tmp_path):
         from unittest.mock import patch
