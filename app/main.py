@@ -23,6 +23,7 @@ from app.routers.files import router as files_router
 from app.routers.edit import router as edit_router
 from app.routers.export import router as export_router
 from app.routers.share import router as share_router
+from app.routers.billing import router as billing_router
 from app.worker import process_job
 
 # DB 테이블 자동 생성 + 기존 테이블 컬럼 마이그레이션
@@ -46,6 +47,7 @@ app.include_router(files_router)
 app.include_router(edit_router)
 app.include_router(export_router)
 app.include_router(share_router)
+app.include_router(billing_router)
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
 
