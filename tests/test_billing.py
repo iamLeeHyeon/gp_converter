@@ -1,5 +1,6 @@
 from unittest.mock import patch, MagicMock
 
+import stripe
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -89,3 +90,106 @@ class TestCreatePortalSession:
         resp = client.post("/billing/portal",
                             headers={"Authorization": f"Bearer {_tok('b-u4')}"})
         assert resp.status_code == 400
+
+
+class TestStripeWebhook:
+    def test_400_invalid_signature(self):
+        with patch("stripe.Webhook.construct_event",
+                   side_effect=stripe.error.SignatureVerificationError("bad sig", "sig_header")):
+            resp = client.post("/billing/webhook", content=b"{}",
+                                headers={"stripe-signature": "bad"})
+        assert resp.status_code == 400
+
+    def test_checkout_session_completed_sets_plan_pro(self):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user(db, uid="w-u1", plan="free", stripe_customer_id="cus_w1")
+        db.close()
+
+        fake_event = {
+            "type": "checkout.session.completed",
+            "data": {"object": {"customer": "cus_w1"}},
+        }
+        with patch("stripe.Webhook.construct_event", return_value=fake_event):
+            resp = client.post("/billing/webhook", content=b"{}",
+                                headers={"stripe-signature": "sig"})
+        assert resp.status_code == 200
+
+        db = SessionLocal()
+        from app.models import User
+        u = db.query(User).filter_by(id="w-u1").first()
+        assert u.plan == "pro"
+        db.close()
+
+    def test_subscription_updated_active_sets_pro(self):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user(db, uid="w-u2", plan="free", stripe_customer_id="cus_w2")
+        db.close()
+
+        fake_event = {
+            "type": "customer.subscription.updated",
+            "data": {"object": {"customer": "cus_w2", "status": "active"}},
+        }
+        with patch("stripe.Webhook.construct_event", return_value=fake_event):
+            resp = client.post("/billing/webhook", content=b"{}",
+                                headers={"stripe-signature": "sig"})
+        assert resp.status_code == 200
+
+        db = SessionLocal()
+        from app.models import User
+        u = db.query(User).filter_by(id="w-u2").first()
+        assert u.plan == "pro"
+        db.close()
+
+    def test_subscription_updated_canceled_sets_free(self):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user(db, uid="w-u3", plan="pro", stripe_customer_id="cus_w3")
+        db.close()
+
+        fake_event = {
+            "type": "customer.subscription.updated",
+            "data": {"object": {"customer": "cus_w3", "status": "canceled"}},
+        }
+        with patch("stripe.Webhook.construct_event", return_value=fake_event):
+            resp = client.post("/billing/webhook", content=b"{}",
+                                headers={"stripe-signature": "sig"})
+        assert resp.status_code == 200
+
+        db = SessionLocal()
+        from app.models import User
+        u = db.query(User).filter_by(id="w-u3").first()
+        assert u.plan == "free"
+        db.close()
+
+    def test_subscription_deleted_sets_free(self):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user(db, uid="w-u4", plan="pro", stripe_customer_id="cus_w4")
+        db.close()
+
+        fake_event = {
+            "type": "customer.subscription.deleted",
+            "data": {"object": {"customer": "cus_w4"}},
+        }
+        with patch("stripe.Webhook.construct_event", return_value=fake_event):
+            resp = client.post("/billing/webhook", content=b"{}",
+                                headers={"stripe-signature": "sig"})
+        assert resp.status_code == 200
+
+        db = SessionLocal()
+        from app.models import User
+        u = db.query(User).filter_by(id="w-u4").first()
+        assert u.plan == "free"
+        db.close()
+
+    def test_unknown_customer_id_does_not_crash(self):
+        fake_event = {
+            "type": "checkout.session.completed",
+            "data": {"object": {"customer": "cus_unknown"}},
+        }
+        with patch("stripe.Webhook.construct_event", return_value=fake_event):
+            resp = client.post("/billing/webhook", content=b"{}",
+                                headers={"stripe-signature": "sig"})
+        assert resp.status_code == 200  # 유저 못 찾아도 200 (Stripe 재전송 방지)
