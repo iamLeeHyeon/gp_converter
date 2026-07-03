@@ -7,6 +7,7 @@ from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
 import mido
 from fastapi.testclient import TestClient
+from starlette.responses import Response
 from unittest.mock import patch
 
 from app.main import app
@@ -316,3 +317,51 @@ class TestMidiExportBugFixes:
         events = _note_on_events(mid)
         ticks = [t for _, t, _ in events]
         assert 3840 in ticks, f"마디 2 음표가 3840 tick에 없음: {ticks}"
+
+
+# ── Task 3 ──────────────────────────────────────────────────────────────────
+
+class TestStorageDelegation:
+    def test_download_gp5_delegates_to_storage(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user_file(db, tmp_path)
+        db.close()
+
+        fake_storage = MagicMock()
+        fake_storage.exists.return_value = True
+        fake_storage.response_for.return_value = Response(
+            content=b"FAKE", media_type="application/octet-stream"
+        )
+
+        with patch("app.routers.export.get_storage", return_value=fake_storage):
+            resp = client.get("/files/f1/download",
+                              headers={"Authorization": f"Bearer {_tok('u1')}"})
+
+        assert resp.status_code == 200
+        fake_storage.exists.assert_called_once()
+        fake_storage.response_for.assert_called_once()
+
+    def test_export_midi_delegates_to_storage_load_to_temp(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user_file(db, tmp_path)
+        db.close()
+
+        # load_to_temp는 실제로는 항상 새로 만든 사본을 반환한다(원본을 건드리면 안 됨) —
+        # 엔드포인트가 다 쓰고 os.unlink로 지우므로, mock도 반드시 별도 파일을 줘야 한다.
+        fake_gp5_copy = tmp_path / "fake_copy.gp5"
+        fake_gp5_copy.write_bytes(b"GP5DATA")
+
+        fake_storage = MagicMock()
+        fake_storage.exists.return_value = True
+        fake_storage.load_to_temp.return_value = str(fake_gp5_copy)
+
+        with patch("app.routers.export.get_storage", return_value=fake_storage):
+            resp = client.get("/files/f1/export/midi",
+                              headers={"Authorization": f"Bearer {_tok('u1')}"})
+
+        assert resp.status_code == 422  # 가짜 GP5DATA라 MIDI 변환은 실패하지만, 위임 자체는 확인됨
+        fake_storage.load_to_temp.assert_called_once()

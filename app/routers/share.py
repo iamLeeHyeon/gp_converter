@@ -1,16 +1,15 @@
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User, File
+from app.storage import get_storage
 
 router = APIRouter(prefix="/files", tags=["share"])
 
@@ -91,6 +90,7 @@ def get_shared_gp5(token: str, db: Session = Depends(get_db)):
     if f.shared_expires_at is not None:
         if datetime.now(timezone.utc) > _as_utc(f.shared_expires_at):
             raise HTTPException(status_code=404, detail="링크가 만료되었습니다")
-    if not f.gp5_path or not os.path.exists(f.gp5_path):
+    storage = get_storage()
+    if not f.gp5_path or not storage.exists(f.gp5_path):
         raise HTTPException(status_code=404, detail="GP5 파일 없음")
-    return FileResponse(f.gp5_path, media_type="application/octet-stream")
+    return storage.response_for(f.gp5_path, filename=f"{f.name}.gp5")

@@ -9,6 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User, File
 from app.pipeline.midi_export import gp5_to_midi
+from app.storage import get_storage
 
 router = APIRouter(prefix="/files", tags=["export"])
 
@@ -25,13 +26,10 @@ def download_gp5(
         raise HTTPException(status_code=404, detail="파일 없음")
     if f.user_id != user.id:
         raise HTTPException(status_code=403, detail="접근 금지")
-    if not f.gp5_path or not os.path.exists(f.gp5_path):
+    storage = get_storage()
+    if not f.gp5_path or not storage.exists(f.gp5_path):
         raise HTTPException(status_code=404, detail="GP5 파일 없음")
-    return FileResponse(
-        f.gp5_path,
-        media_type="application/octet-stream",
-        filename=f"{f.name}.gp5",
-    )
+    return storage.response_for(f.gp5_path, filename=f"{f.name}.gp5")
 
 
 @router.get("/{file_id}/export/midi")
@@ -46,16 +44,20 @@ def export_midi(
         raise HTTPException(status_code=404, detail="파일 없음")
     if f.user_id != user.id:
         raise HTTPException(status_code=403, detail="접근 금지")
-    if not f.gp5_path or not os.path.exists(f.gp5_path):
+    storage = get_storage()
+    if not f.gp5_path or not storage.exists(f.gp5_path):
         raise HTTPException(status_code=404, detail="GP5 파일 없음")
 
+    local_gp5_path = storage.load_to_temp(f.gp5_path)
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mid")
     os.close(tmp_fd)
     try:
-        gp5_to_midi(f.gp5_path, tmp_path)
+        gp5_to_midi(local_gp5_path, tmp_path)
     except Exception as e:
         os.unlink(tmp_path)
         raise HTTPException(status_code=422, detail=f"MIDI 변환 실패: {e}")
+    finally:
+        os.unlink(local_gp5_path)
 
     return FileResponse(
         tmp_path,

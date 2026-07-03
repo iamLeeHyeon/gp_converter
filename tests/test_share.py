@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
+from starlette.responses import Response
 
 from app.main import app
 from app.auth import create_access_token
@@ -200,3 +201,27 @@ class TestPublicShareAccess:
 
         resp = client.get(f"/files/shared/{created['token']}")
         assert resp.status_code == 404
+
+
+class TestStorageDelegation:
+    def test_get_shared_gp5_delegates_to_storage(self, tmp_path):
+        from unittest.mock import MagicMock, patch
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user_file(db, tmp_path, fid="f-storage")
+        db.close()
+
+        headers = {"Authorization": f"Bearer {_tok('u1')}"}
+        created = client.post("/files/f-storage/share", json={}, headers=headers).json()
+
+        fake_storage = MagicMock()
+        fake_storage.exists.return_value = True
+        fake_storage.response_for.return_value = Response(
+            content=b"FAKE", media_type="application/octet-stream"
+        )
+
+        with patch("app.routers.share.get_storage", return_value=fake_storage):
+            resp = client.get(f"/files/shared/{created['token']}")
+
+        assert resp.status_code == 200
+        fake_storage.response_for.assert_called_once()
