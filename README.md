@@ -107,6 +107,8 @@ docker run --rm --platform linux/amd64 -p 8000:8000 gp-converter
 | `GITHUB_CLIENT_ID` | 없음 | GitHub OAuth 클라이언트 ID |
 | `GITHUB_CLIENT_SECRET` | 없음 | GitHub OAuth 클라이언트 시크릿 |
 
+`STORAGE_BACKEND=s3`일 때는 위 세 변수 외에 boto3 표준 AWS 자격증명 환경변수(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, 필요시 `AWS_REGION`)도 반드시 설정해야 한다. 이 프로젝트는 별도 자격증명 변수명을 만들지 않고 boto3의 기본 자격증명 체인(env → 공유 credentials 파일 → IAM 역할 순)을 그대로 사용한다.
+
 ## 테스트
 
 ```bash
@@ -151,3 +153,4 @@ docs/superpowers/        # 설계 문서 및 구현 계획
 - **Celery 워커와 웹서버는 반드시 같은 `GPC_JOBS_DIR` 파일시스템을 공유해야 한다.** job 상태는 파일 기반(`JobStore`)이라, 워커를 다른 호스트/컨테이너로 분리 배포하면서 `jobs_dir`를 공유 볼륨으로 마운트하지 않으면 워커가 `store.get(job_id)`에서 `None`을 받아 아무 에러 없이 조용히 리턴한다 — job이 영원히 `queued`로 멈춘다. 단일 호스트(같은 서버에서 웹+워커 실행) 또는 web/worker가 같은 볼륨을 공유하는 docker-compose 구성에서는 문제 없다.
 - 익명(비로그인) `/convert`도 동일한 Redis 큐에 우선순위 구분 없이 쌓인다 — 무료플랜 사용량 제한은 로그인 유저에게만 적용되고 익명 요청은 우회하므로, 악의적으로 익명 요청을 대량으로 보내면 정상 유저의 job이 큐에서 밀릴 수 있다. 레이트리밋/우선순위 큐는 아직 없음(추후 과제).
 - `STORAGE_BACKEND`을 바꾸면(local↔s3) 이미 저장된 기존 파일은 자동 이관되지 않는다. 필요하면 수동으로 옮겨야 한다.
+- `STORAGE_BACKEND=s3`일 때는 파일 다운로드/공유링크 접근마다 전체 파일을 로컬 임시파일로 내려받은 뒤(`load_to_temp`) 서빙한다(직접 스트리밍 아님). 특히 `GET /files/shared/{token}`는 인증 없이 공개된 엔드포인트라 트래픽이 몰리면 `local` 백엔드 대비 지연/대역폭/로컬 디스크 사용이 늘어난다.
