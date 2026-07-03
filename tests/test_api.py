@@ -11,9 +11,27 @@ def make_client(tmp_path, **settings_overrides):
     """jobs_dir을 tmp_path 하위로 둔 Settings를 dependency_overrides로 주입한다.
 
     importlib.reload 없이 app.main.app을 그대로 재사용한다.
+
+    DB도 tmp_path 하위 격리된 SQLite로 재구성한다 — 실제 개발용 gp_converter.db를
+    테스트가 오염시키는 것을 막는다. app.database.SessionLocal은 앱 전역에서
+    공유하는 단일 sessionmaker 객체라, 새 객체로 교체(재할당)하지 않고
+    `.configure(bind=...)`로 같은 객체의 bind만 바꾼다 — 테스트 함수들이
+    `from app.database import SessionLocal`를 make_client() 호출보다 먼저
+    실행해 이미 참조를 붙잡고 있어도(현재 TestConvertUsageLimits가 그렇게 작성됨),
+    같은 객체이므로 이후 호출에서 재구성된 bind가 그대로 적용된다.
     """
     settings = Settings(jobs_dir=str(tmp_path / "jobs"), **settings_overrides)
     main.app.dependency_overrides[main.get_settings] = lambda: settings
+
+    from sqlalchemy import create_engine
+    from app.database import Base, SessionLocal
+
+    test_engine = create_engine(
+        f"sqlite:///{tmp_path}/test.db", connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(bind=test_engine)
+    SessionLocal.configure(bind=test_engine)
+
     return TestClient(main.app), main
 
 
