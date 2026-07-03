@@ -126,3 +126,74 @@ def test_migration_creates_unique_index_even_if_column_exists(tmp_path):
         except sa.exc.IntegrityError:
             # 예상된 동작: unique constraint 위반 (인덱스가 제대로 생성됨)
             pass
+
+
+def test_migration_adds_stripe_customer_id_column(tmp_path):
+    """구버전 users 테이블(신규 컬럼 없음)에 stripe_customer_id를 추가한다."""
+    db_path = tmp_path / "old_users.db"
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "CREATE TABLE users ("
+            "id VARCHAR PRIMARY KEY, email VARCHAR, provider VARCHAR, "
+            "provider_id VARCHAR, plan VARCHAR, created_at DATETIME)"
+        ))
+        conn.commit()
+
+    run_sqlite_migrations(engine)
+
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(users)"))}
+    assert "stripe_customer_id" in cols
+
+
+def test_migration_creates_unique_index_on_stripe_customer_id(tmp_path):
+    """마이그레이션 후 stripe_customer_id에 unique index가 생성되어야 한다."""
+    db_path = tmp_path / "old_users2.db"
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "CREATE TABLE users ("
+            "id VARCHAR PRIMARY KEY, email VARCHAR, provider VARCHAR, "
+            "provider_id VARCHAR, plan VARCHAR, created_at DATETIME)"
+        ))
+        conn.commit()
+
+    run_sqlite_migrations(engine)
+
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "INSERT INTO users (id, email, provider, provider_id, stripe_customer_id) "
+            "VALUES ('u1', 'a@x.com', 'google', 'u1', 'cus_123')"
+        ))
+        conn.commit()
+
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(
+                "INSERT INTO users (id, email, provider, provider_id, stripe_customer_id) "
+                "VALUES ('u2', 'b@x.com', 'google', 'u2', 'cus_123')"
+            ))
+            conn.commit()
+            raise AssertionError("중복 stripe_customer_id insert가 실패해야 하는데 성공함")
+        except sa.exc.IntegrityError:
+            pass
+
+
+def test_migration_users_table_missing_is_noop(tmp_path):
+    """users 테이블이 없는 DB(예: files만 있는 구버전 테스트 DB)에서도 에러 없이 통과해야 한다.
+
+    이 테스트는 회귀 방지용이다: run_sqlite_migrations가 users 테이블을
+    무조건 건드리게 만들면, files만 있는 기존 테스트 DB들(위의 다른 테스트들)이
+    전부 'no such table: users'로 깨진다 — 각 테이블 블록은 반드시
+    존재 여부를 먼저 확인해야 한다.
+    """
+    db_path = tmp_path / "files_only.db"
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "CREATE TABLE files (id VARCHAR PRIMARY KEY, shared_token VARCHAR)"
+        ))
+        conn.commit()
+
+    run_sqlite_migrations(engine)  # users 테이블 없어도 에러 없이 통과해야 함

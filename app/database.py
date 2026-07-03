@@ -24,17 +24,36 @@ def get_db():
 def run_sqlite_migrations(engine) -> None:
     """create_all()이 커버하지 못하는 기존 테이블 컬럼 추가.
 
-    Alembic 없이 운영하는 프로젝트라, 기존 files 테이블에 새 컬럼이 생길 때마다
+    Alembic 없이 운영하는 프로젝트라, 기존 테이블에 새 컬럼이 생길 때마다
     여기에 (컬럼명, DDL타입) 쌍을 추가한다. 기존 행 데이터는 보존된다.
+    각 테이블 블록은 해당 테이블이 실제 존재할 때만 실행한다 — 그렇지 않으면
+    특정 테이블만 있는 상태로 이 함수를 호출하는 테스트/부분 DB에서 에러가 난다.
     """
     if engine.dialect.name != "sqlite":
         return
 
     with engine.connect() as conn:
-        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(files)"))}
-        if "shared_token" not in cols:
-            conn.execute(text("ALTER TABLE files ADD COLUMN shared_token VARCHAR"))
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_files_shared_token ON files (shared_token)"))
-        if "shared_expires_at" not in cols:
-            conn.execute(text("ALTER TABLE files ADD COLUMN shared_expires_at DATETIME"))
+        tables = {row[0] for row in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        )}
+
+        if "files" in tables:
+            cols = {row[1] for row in conn.execute(text("PRAGMA table_info(files)"))}
+            if "shared_token" not in cols:
+                conn.execute(text("ALTER TABLE files ADD COLUMN shared_token VARCHAR"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_files_shared_token ON files (shared_token)"
+            ))
+            if "shared_expires_at" not in cols:
+                conn.execute(text("ALTER TABLE files ADD COLUMN shared_expires_at DATETIME"))
+
+        if "users" in tables:
+            user_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(users)"))}
+            if "stripe_customer_id" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_stripe_customer_id "
+                "ON users (stripe_customer_id)"
+            ))
+
         conn.commit()
