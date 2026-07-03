@@ -11,6 +11,14 @@ export interface ShareInfo {
   expires_at: string | null
 }
 
+export interface UsageInfo {
+  plan: string
+  conversions_used: number
+  conversions_limit: number
+  files_used: number
+  files_limit: number
+}
+
 function getToken(): string {
   return localStorage.getItem('access_token') ?? ''
 }
@@ -121,5 +129,17 @@ export const api = {
       throw new Error(body.detail ?? `HTTP ${res.status}`)
     }
     return res.arrayBuffer()
+  },
+
+  async getUsage(): Promise<UsageInfo> {
+    return request<UsageInfo>('/billing/usage')
+  },
+
+  async createCheckoutSession(): Promise<{ url: string }> {
+    return request<{ url: string }>('/billing/checkout', { method: 'POST' })
+  },
+
+  async createPortalSession(): Promise<{ url: string }> {
+    return request<{ url: string }>('/billing/portal', { method: 'POST' })
   },
 }
