@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import User
+from app.models import File, User
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -22,6 +23,27 @@ except KeyError as e:
 stripe.api_key = _STRIPE_SECRET_KEY
 
 _FRONTEND = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+FREE_CONVERSIONS_LIMIT = 3
+FREE_FILES_LIMIT = 5
+
+
+def count_usage(db: Session, user_id: str) -> tuple[int, int]:
+    """(최근 30일 성공 변환 수, 저장된 파일 총개수) 반환.
+
+    30일 컷오프는 timezone-naive UTC로 계산한다 — File.created_at이
+    SQLite server_default(func.now())로 채워질 때 naive datetime 문자열로
+    저장되므로, 비교 대상도 naive로 맞춰야 문자열 비교가 정확하다
+    (aware datetime을 쓰면 오프셋 접미사 유무가 달라져서 문자열 비교가 깨짐).
+    """
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    conversions_used = (
+        db.query(File)
+        .filter(File.user_id == user_id, File.gp5_path != "", File.created_at >= cutoff)
+        .count()
+    )
+    files_used = db.query(File).filter(File.user_id == user_id).count()
+    return conversions_used, files_used
 
 
 @router.post("/checkout")
@@ -86,3 +108,19 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             db.commit()
 
     return {"ok": True}
+
+
+@router.get("/usage")
+def get_usage(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """현재 플랜 + 사용량 조회."""
+    conversions_used, files_used = count_usage(db, user.id)
+    return {
+        "plan": user.plan,
+        "conversions_used": conversions_used,
+        "conversions_limit": FREE_CONVERSIONS_LIMIT,
+        "files_used": files_used,
+        "files_limit": FREE_FILES_LIMIT,
+    }

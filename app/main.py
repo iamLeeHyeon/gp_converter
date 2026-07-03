@@ -23,7 +23,7 @@ from app.routers.files import router as files_router
 from app.routers.edit import router as edit_router
 from app.routers.export import router as export_router
 from app.routers.share import router as share_router
-from app.routers.billing import router as billing_router
+from app.routers.billing import router as billing_router, count_usage, FREE_CONVERSIONS_LIMIT, FREE_FILES_LIMIT
 from app.worker import process_job
 
 # DB 테이블 자동 생성 + 기존 테이블 컬럼 마이그레이션
@@ -86,6 +86,21 @@ async def convert(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
 ):
+    if current_user and current_user.plan == "free":
+        conversions_used, files_used = count_usage(db, current_user.id)
+        if conversions_used >= FREE_CONVERSIONS_LIMIT:
+            raise HTTPException(
+                status_code=402,
+                detail=f"무료 플랜 월 변환 한도({FREE_CONVERSIONS_LIMIT}회)를 초과했습니다. "
+                       f"Pro로 업그레이드하세요.",
+            )
+        if files_used >= FREE_FILES_LIMIT:
+            raise HTTPException(
+                status_code=402,
+                detail=f"무료 플랜 저장 한도({FREE_FILES_LIMIT}개)를 초과했습니다. "
+                       f"파일을 삭제하거나 Pro로 업그레이드하세요.",
+            )
+
     fd, tmp_path = tempfile.mkstemp(prefix="upload_", suffix=".pdf")
     checked_magic = False
     try:

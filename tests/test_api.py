@@ -117,3 +117,109 @@ def test_each_test_gets_isolated_jobs_dir(tmp_path):
     r = client.post("/convert", files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")})
     assert r.status_code == 200
     assert (tmp_path / "jobs").is_dir()
+
+
+class TestConvertUsageLimits:
+    def test_free_user_blocked_after_3_successful_conversions(self, tmp_path):
+        from app.database import SessionLocal
+        from app.models import User, File
+        from app.auth import create_access_token
+
+        client, _ = make_client(tmp_path)
+        db = SessionLocal()
+        db.merge(User(id="cv-u1", email="cv1@x.com", provider="google",
+                       provider_id="cv-u1", plan="free"))
+        for i in range(3):
+            db.merge(File(id=f"cv-f{i}", user_id="cv-u1", name="s", gp5_path=f"/x/{i}.gp5"))
+        db.commit()
+        db.close()
+
+        token = create_access_token("cv-u1")
+        r = client.post(
+            "/convert",
+            files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 402
+
+    def test_free_user_allowed_with_2_successful_conversions(self, tmp_path):
+        from unittest.mock import patch
+        from app.database import SessionLocal
+        from app.models import User, File
+        from app.auth import create_access_token
+
+        client, _ = make_client(tmp_path)
+        db = SessionLocal()
+        db.merge(User(id="cv-u2", email="cv2@x.com", provider="google",
+                       provider_id="cv-u2", plan="free"))
+        for i in range(2):
+            db.merge(File(id=f"cv-f2-{i}", user_id="cv-u2", name="s", gp5_path=f"/x/{i}.gp5"))
+        db.commit()
+        db.close()
+
+        token = create_access_token("cv-u2")
+        with patch("app.main.process_job"):
+            r = client.post(
+                "/convert",
+                files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert r.status_code == 200
+
+    def test_free_user_blocked_after_5_saved_files(self, tmp_path):
+        from app.database import SessionLocal
+        from app.models import User, File
+        from app.auth import create_access_token
+
+        client, _ = make_client(tmp_path)
+        db = SessionLocal()
+        db.merge(User(id="cv-u3", email="cv3@x.com", provider="google",
+                       provider_id="cv-u3", plan="free"))
+        for i in range(5):
+            db.merge(File(id=f"cv-f3-{i}", user_id="cv-u3", name="s", gp5_path=""))
+        db.commit()
+        db.close()
+
+        token = create_access_token("cv-u3")
+        r = client.post(
+            "/convert",
+            files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 402
+
+    def test_pro_user_unlimited(self, tmp_path):
+        from unittest.mock import patch
+        from app.database import SessionLocal
+        from app.models import User, File
+        from app.auth import create_access_token
+
+        client, _ = make_client(tmp_path)
+        db = SessionLocal()
+        db.merge(User(id="cv-u4", email="cv4@x.com", provider="google",
+                       provider_id="cv-u4", plan="pro"))
+        for i in range(10):
+            db.merge(File(id=f"cv-f4-{i}", user_id="cv-u4", name="s", gp5_path=f"/x/{i}.gp5"))
+        db.commit()
+        db.close()
+
+        token = create_access_token("cv-u4")
+        with patch("app.main.process_job"):
+            r = client.post(
+                "/convert",
+                files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert r.status_code == 200
+
+    def test_anonymous_user_not_limited(self, tmp_path):
+        """비로그인 유저는 사용량 제한 대상이 아니다 (기존 아키텍처 연장, 알려진 한계)."""
+        from unittest.mock import patch
+
+        client, _ = make_client(tmp_path)
+        with patch("app.main.process_job"):
+            r = client.post(
+                "/convert",
+                files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+            )
+        assert r.status_code == 200

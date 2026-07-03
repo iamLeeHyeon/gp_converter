@@ -193,3 +193,55 @@ class TestStripeWebhook:
             resp = client.post("/billing/webhook", content=b"{}",
                                 headers={"stripe-signature": "sig"})
         assert resp.status_code == 200  # 유저 못 찾아도 200 (Stripe 재전송 방지)
+
+
+class TestUsage:
+    def test_free_user_usage_counts(self, tmp_path):
+        from app.database import SessionLocal
+        from app.models import File
+        db = SessionLocal()
+        _setup_user(db, uid="u-u1", plan="free")
+        for i in range(2):
+            db.merge(File(id=f"u-f{i}", user_id="u-u1", name="s",
+                           gp5_path=str(tmp_path / f"{i}.gp5")))
+        db.merge(File(id="u-f-pending", user_id="u-u1", name="s", gp5_path=""))
+        db.commit()
+        db.close()
+
+        resp = client.get("/billing/usage",
+                           headers={"Authorization": f"Bearer {_tok('u-u1')}"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["plan"] == "free"
+        assert body["conversions_used"] == 2
+        assert body["conversions_limit"] == 3
+        assert body["files_used"] == 3
+        assert body["files_limit"] == 5
+
+    def test_old_conversions_excluded_from_30day_window(self):
+        from datetime import datetime, timedelta
+        from app.database import SessionLocal
+        from app.models import File
+        db = SessionLocal()
+        _setup_user(db, uid="u-u2", plan="free")
+        old_file = File(id="u-f-old", user_id="u-u2", name="s", gp5_path="/x/old.gp5")
+        old_file.created_at = datetime.utcnow() - timedelta(days=31)
+        db.merge(old_file)
+        db.commit()
+        db.close()
+
+        resp = client.get("/billing/usage",
+                           headers={"Authorization": f"Bearer {_tok('u-u2')}"})
+        body = resp.json()
+        assert body["conversions_used"] == 0  # 30일 밖이라 카운트 제외
+        assert body["files_used"] == 1  # 저장 카운트는 시간 무관
+
+    def test_pro_user_plan_reported(self):
+        from app.database import SessionLocal
+        db = SessionLocal()
+        _setup_user(db, uid="u-u3", plan="pro")
+        db.close()
+
+        resp = client.get("/billing/usage",
+                           headers={"Authorization": f"Bearer {_tok('u-u3')}"})
+        assert resp.json()["plan"] == "pro"
