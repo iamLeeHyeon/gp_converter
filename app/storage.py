@@ -25,8 +25,17 @@ class LocalStorage:
         return local_path
 
     def save_file(self, key: str, local_path: str) -> None:
-        if os.path.abspath(key) != os.path.abspath(local_path):
-            shutil.copy(local_path, key)
+        if os.path.abspath(key) == os.path.abspath(local_path):
+            return
+        dest_dir = os.path.dirname(key) or "."
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=dest_dir)
+        os.close(tmp_fd)
+        try:
+            shutil.copy(local_path, tmp_path)
+            os.replace(tmp_path, key)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
 
     def load_to_temp(self, key: str) -> str:
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".gp5")

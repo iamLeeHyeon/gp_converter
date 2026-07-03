@@ -29,6 +29,25 @@ class TestLocalStorage:
         assert dst.read_bytes() == b"NEWDATA"
         assert src.read_bytes() == b"NEWDATA"  # 원본은 호출자가 정리하기 전까지 그대로
 
+    def test_save_file_uses_atomic_replace_when_key_differs(self, tmp_path):
+        storage = LocalStorage()
+        src = tmp_path / "src.gp5"
+        src.write_bytes(b"NEWDATA")
+        dst = tmp_path / "dst.gp5"
+        dst.write_bytes(b"OLDDATA")
+
+        with patch("app.storage.os.replace", wraps=os.replace) as mock_replace:
+            storage.save_file(str(dst), str(src))
+
+        mock_replace.assert_called_once()
+        replaced_src, replaced_dst = mock_replace.call_args[0]
+        assert os.path.dirname(replaced_src) == str(tmp_path)  # 같은 디렉토리의 임시파일
+        assert replaced_dst == str(dst)
+        assert dst.read_bytes() == b"NEWDATA"
+        # 임시파일은 rename으로 소비되어 남지 않아야 함
+        leftover = [p for p in tmp_path.iterdir() if p not in (src, dst)]
+        assert leftover == []
+
     def test_load_to_temp_returns_disposable_copy_not_original(self, tmp_path):
         storage = LocalStorage()
         original = tmp_path / "output.gp5"
