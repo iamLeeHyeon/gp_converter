@@ -108,12 +108,14 @@ describe('BillingPanel', () => {
     await waitFor(() => expect(window.location.href).toBe('https://billing.stripe.com/x'))
   })
 
-  it('handleUpgrade: 언마운트 후 응답 도착해도 setState 호출 안 됨 (isMountedRef 가드 검증)', async () => {
+  it('handleUpgrade: 언마운트 후 응답이 실패해도 setState 호출 안 됨 (isMountedRef 가드 검증)', async () => {
     const { api } = await import('../lib/api')
-    let resolveCheckout: (value: any) => void = () => {}
-    const checkoutPromise = new Promise(resolve => {
-      resolveCheckout = resolve
+    let rejectCheckout: (reason?: any) => void = () => {}
+    const checkoutPromise = new Promise((_resolve, reject) => {
+      rejectCheckout = reject
     })
+    // 테스트 실패 시 unhandled rejection 로그로 오염되지 않게 미리 catch 등록
+    checkoutPromise.catch(() => {})
 
     vi.mocked(api.getUsage).mockResolvedValue({
       plan: 'free', conversions_used: 0, conversions_limit: 3,
@@ -131,19 +133,21 @@ describe('BillingPanel', () => {
     // Promise 해결 전 언마운트
     unmount()
 
-    // 언마운트 후 응답 도착 → 가드가 있으면 setBusy(false) 호출이 없어야 함
-    resolveCheckout({ url: 'https://checkout.stripe.com/x' })
+    // 언마운트 후 응답이 실패로 도착 → catch 블록의 setBusy(false)가
+    // 가드가 있으면 호출되지 않아야 함
+    rejectCheckout(new Error('network error'))
     await new Promise(r => setTimeout(r, 0))
 
     expect(stateTracking.totalCalls).toBe(callsBeforeUnmount)
   })
 
-  it('handleManage: 언마운트 후 응답 도착해도 setState 호출 안 됨 (isMountedRef 가드 검증)', async () => {
+  it('handleManage: 언마운트 후 응답이 실패해도 setState 호출 안 됨 (isMountedRef 가드 검증)', async () => {
     const { api } = await import('../lib/api')
-    let resolvePortal: (value: any) => void = () => {}
-    const portalPromise = new Promise(resolve => {
-      resolvePortal = resolve
+    let rejectPortal: (reason?: any) => void = () => {}
+    const portalPromise = new Promise((_resolve, reject) => {
+      rejectPortal = reject
     })
+    portalPromise.catch(() => {})
 
     vi.mocked(api.getUsage).mockResolvedValue({
       plan: 'pro', conversions_used: 0, conversions_limit: 3,
@@ -159,7 +163,7 @@ describe('BillingPanel', () => {
 
     unmount()
 
-    resolvePortal({ url: 'https://billing.stripe.com/x' })
+    rejectPortal(new Error('network error'))
     await new Promise(r => setTimeout(r, 0))
 
     expect(stateTracking.totalCalls).toBe(callsBeforeUnmount)
