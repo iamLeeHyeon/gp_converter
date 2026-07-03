@@ -1,0 +1,48 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - DATABASE_URL=sqlite:////srv/data/gp_converter.db
+    volumes:
+      - jobs-data:/srv/jobs
+      - db-data:/srv/data
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - DATABASE_URL=sqlite:////srv/data/gp_converter.db
+    volumes:
+      - jobs-data:/srv/jobs
+      - db-data:/srv/data
+    depends_on:
+      - redis
+    command: ["celery", "-A", "app.tasks:celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+
+volumes:
+  redis-data:
+  jobs-data:
+  db-data:
