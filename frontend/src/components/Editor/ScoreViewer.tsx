@@ -146,67 +146,75 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
     apiRef.current.load(storeGp5Buffer)
   }, [storeGp5Buffer])
 
-  if (!gp5Buffer) {
-    return (
-      <div style={{ padding: 32, textAlign: 'center', color: '#666' }}>
-        악보를 불러오세요 — PDF를 업로드하거나 파일 목록에서 선택하세요
-      </div>
-    )
-  }
-
+  // 악보 영역(containerRef)은 gp5Buffer 유무와 무관하게 항상 마운트돼 있어야
+  // 한다 — alphaTab 초기화 effect는 [setSelected]에만 의존해서 최초 마운트
+  // 시 딱 한 번만 실행되는데, 예전엔 gp5Buffer가 null일 때 이 div 자체가
+  // 렌더링되는 다른 분기(조건부 early return)로 빠져서 containerRef.current가
+  // 그 시점에 계속 null이었다 — 이후 gp5Buffer가 생겨도 effect가 재실행되지
+  // 않아 alphaTab이 영영 초기화되지 않는 버그가 있었다(실제 앱에서 재현 확인).
   return (
     <div style={{ display: 'flex', height: '100%' }}>
       {/* 좌측 탭 패널: 파일 | 트랙 */}
-      <aside style={{ width: 200, borderRight: '1px solid #ddd', overflow: 'auto', flexShrink: 0 }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid #ddd' }}>
-          <button
-            style={{ flex: 1, fontWeight: leftTab === 'files' ? 'bold' : undefined }}
-            onClick={() => setLeftTab('files')}
-          >파일</button>
-          <button
-            style={{ flex: 1, fontWeight: leftTab === 'tracks' ? 'bold' : undefined }}
-            onClick={() => setLeftTab('tracks')}
-          >트랙</button>
-        </div>
-        {leftTab === 'files'
-          ? <div style={{ padding: 8, fontSize: 12, color: '#666' }}>파일 목록은 왼쪽 사이드바를 이용하세요</div>
-          : <TrackPanel />
-        }
-      </aside>
+      {gp5Buffer && (
+        <aside style={{ width: 200, borderRight: '1px solid #ddd', overflow: 'auto', flexShrink: 0 }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #ddd' }}>
+            <button
+              style={{ flex: 1, fontWeight: leftTab === 'files' ? 'bold' : undefined }}
+              onClick={() => setLeftTab('files')}
+            >파일</button>
+            <button
+              style={{ flex: 1, fontWeight: leftTab === 'tracks' ? 'bold' : undefined }}
+              onClick={() => setLeftTab('tracks')}
+            >트랙</button>
+          </div>
+          {leftTab === 'files'
+            ? <div style={{ padding: 8, fontSize: 12, color: '#666' }}>파일 목록은 왼쪽 사이드바를 이용하세요</div>
+            : <TrackPanel />
+          }
+        </aside>
+      )}
 
       {/* 악보 영역 */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '8px 0', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={() => apiRef.current?.playPause()} disabled={!loaded}>
-            {playing ? '일시정지' : '재생'}
-          </button>
-          <ExportMenu
-            fileId={fileId}
-            gp5Buffer={gp5Buffer}
-            onPrint={() => apiRef.current?.print()}
-          />
-          <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
-            {saveStatus === 'saving' ? '저장 중…'
-              : saveStatus === 'saved' ? '저장됨'
-              : saveStatus === 'error' ? '저장 실패'
-              : ''}
-          </span>
-        </div>
+        {!gp5Buffer ? (
+          <div style={{ padding: 32, textAlign: 'center', color: '#666' }}>
+            악보를 불러오세요 — PDF를 업로드하거나 파일 목록에서 선택하세요
+          </div>
+        ) : (
+          <div style={{ padding: '8px 0', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => apiRef.current?.playPause()} disabled={!loaded}>
+              {playing ? '일시정지' : '재생'}
+            </button>
+            <ExportMenu
+              fileId={fileId}
+              gp5Buffer={gp5Buffer}
+              onPrint={() => apiRef.current?.print()}
+            />
+            <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
+              {saveStatus === 'saving' ? '저장 중…'
+                : saveStatus === 'saved' ? '저장됨'
+                : saveStatus === 'error' ? '저장 실패'
+                : ''}
+            </span>
+          </div>
+        )}
         <div ref={containerRef} style={{ width: '100%', flex: 1 }} />
       </div>
 
       {/* 우측 패널: StructurePanel + EditPanel */}
-      <div style={{ width: 280, borderLeft: '1px solid #ddd', overflowY: 'auto', flexShrink: 0 }}>
-        <StructurePanel />
-        <hr style={{ margin: '4px 0' }} />
-        <EditPanel
-          selectedPosition={selected}
-          currentBeat={currentBeat}
-          currentNote={currentNote}
-          onEditBeat={commitEdit}
-          onEditNote={commitEdit}
-        />
-      </div>
+      {gp5Buffer && (
+        <div style={{ width: 280, borderLeft: '1px solid #ddd', overflowY: 'auto', flexShrink: 0 }}>
+          <StructurePanel />
+          <hr style={{ margin: '4px 0' }} />
+          <EditPanel
+            selectedPosition={selected}
+            currentBeat={currentBeat}
+            currentNote={currentNote}
+            onEditBeat={commitEdit}
+            onEditNote={commitEdit}
+          />
+        </div>
+      )}
     </div>
   )
 }
