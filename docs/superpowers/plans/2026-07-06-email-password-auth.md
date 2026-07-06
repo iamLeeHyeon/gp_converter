@@ -846,12 +846,12 @@ def resend_verification(body: ResendVerificationRequest, db: Session = Depends(g
 - [ ] **Step 4: 테스트 실행해서 통과 확인**
 
 Run: `source .venv/bin/activate && pytest tests/test_email_password_auth.py -v`
-Expected: 9개 전부 PASS
+Expected: 10개 전부 PASS
 
 - [ ] **Step 5: 전체 백엔드 스위트 회귀 확인**
 
 Run: `source .venv/bin/activate && pytest -q`
-Expected: 이전 238 + 이번 태스크까지 추가된 테스트 전부 PASS, 실패 0
+Expected: 이전 250 + 이번 태스크까지 추가된 테스트 전부 PASS, 실패 0
 
 - [ ] **Step 6: Commit**
 
