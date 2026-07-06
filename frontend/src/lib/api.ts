@@ -106,6 +106,16 @@ export const api = {
     await downloadBlob(`/files/${fileId}/export/midi`, filename)
   },
 
+  downloadBuffer(buffer: ArrayBuffer, filename: string): void {
+    const blob = new Blob([buffer], { type: 'application/octet-stream' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(href)
+  },
+
   async getShareStatus(fileId: string): Promise<ShareInfo> {
     return request<ShareInfo>(`/files/${fileId}/share`)
   },

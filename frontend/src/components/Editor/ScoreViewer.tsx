@@ -182,6 +182,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
           </button>
           <ExportMenu
             fileId={fileId}
+            gp5Buffer={gp5Buffer}
             onPrint={() => apiRef.current?.print()}
           />
           <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
