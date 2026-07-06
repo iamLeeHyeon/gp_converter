@@ -85,6 +85,9 @@ async def convert(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
 ):
+    if current_user and not current_user.email_verified:
+        raise HTTPException(status_code=403, detail="이메일 인증 후 이용 가능합니다.")
+
     if current_user and current_user.plan == "free":
         conversions_used, files_used = count_usage(db, current_user.id)
         if conversions_used >= FREE_CONVERSIONS_LIMIT:

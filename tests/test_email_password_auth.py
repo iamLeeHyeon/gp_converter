@@ -155,3 +155,60 @@ class TestResendVerification:
             assert r.status_code == 200
         finally:
             _cleanup("alreadyverified@x.com")
+
+
+class TestLogin:
+    def test_login_succeeds_with_correct_password(self):
+        try:
+            with patch("app.routers.auth.send_verification_email_task"):
+                client.post("/auth/register", json={"email": "loginme@x.com", "password": "password123"})
+            r = client.post("/auth/login", json={"email": "loginme@x.com", "password": "password123"})
+            assert r.status_code == 200
+            assert "access_token" in r.json()
+        finally:
+            _cleanup("loginme@x.com")
+
+    def test_login_fails_with_wrong_password(self):
+        try:
+            with patch("app.routers.auth.send_verification_email_task"):
+                client.post("/auth/register", json={"email": "wrongpw@x.com", "password": "password123"})
+            r = client.post("/auth/login", json={"email": "wrongpw@x.com", "password": "wrongpassword"})
+            assert r.status_code == 401
+        finally:
+            _cleanup("wrongpw@x.com")
+
+    def test_login_fails_for_nonexistent_email(self):
+        r = client.post("/auth/login", json={"email": "nosuchuser@x.com", "password": "password123"})
+        assert r.status_code == 401
+
+    def test_login_fails_for_oauth_only_account(self):
+        """password_hash가 없는 OAuth 전용 계정은 자체가입 로그인으로 들어갈 수 없다."""
+        db = SessionLocal()
+        db.add(User(id="oauth-only-1", email="oauthonly@x.com", provider="google", provider_id="g-only-1"))
+        db.commit()
+        db.close()
+        try:
+            r = client.post("/auth/login", json={"email": "oauthonly@x.com", "password": "anything123"})
+            assert r.status_code == 401
+        finally:
+            _cleanup("oauthonly@x.com")
+
+
+class TestMe:
+    def test_me_returns_current_user_info(self):
+        try:
+            with patch("app.routers.auth.send_verification_email_task"):
+                reg = client.post("/auth/register", json={"email": "meuser@x.com", "password": "password123"})
+            token = reg.json()["access_token"]
+            r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["email"] == "meuser@x.com"
+            assert body["plan"] == "free"
+            assert body["email_verified"] is False
+        finally:
+            _cleanup("meuser@x.com")
+
+    def test_me_requires_auth(self):
+        r = client.get("/auth/me")
+        assert r.status_code in (401, 403)

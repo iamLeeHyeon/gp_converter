@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, create_refresh_token, decode_token
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import User
 from app.tasks import send_verification_email_task
 
@@ -236,3 +237,31 @@ def resend_verification(body: ResendVerificationRequest, db: Session = Depends(g
         db.commit()
         send_verification_email_task.delay(user.id)
     return {"message": "인증 이메일이 발송되었으면 잠시 후 확인해주세요."}
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/login")
+def login(body: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=body.email, provider="password").first()
+    if not user or not user.password_hash:
+        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+    if not bcrypt.checkpw(body.password.encode("utf-8"), user.password_hash.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+
+    return {
+        "access_token": create_access_token(user.id),
+        "refresh_token": create_refresh_token(user.id),
+    }
+
+
+@router.get("/me")
+def me(current_user: User = Depends(get_current_user)):
+    return {
+        "email": current_user.email,
+        "plan": current_user.plan,
+        "email_verified": current_user.email_verified,
+    }

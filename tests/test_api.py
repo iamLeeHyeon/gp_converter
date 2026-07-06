@@ -269,3 +269,51 @@ class TestConvertUsageLimits:
                 files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
             )
         assert r.status_code == 200
+
+
+class TestConvertEmailVerificationGate:
+    def test_convert_blocked_for_unverified_email_account(self, tmp_path):
+        from app.auth import create_access_token
+        from app.database import SessionLocal
+        from app.models import User
+
+        client, _ = make_client(tmp_path)
+        db = SessionLocal()
+        db.merge(User(
+            id="unverified-convert-1", email="unverifiedconvert@x.com", provider="password",
+            provider_id="unverifiedconvert@x.com", password_hash="h", email_verified=False,
+        ))
+        db.commit()
+        db.close()
+
+        token = create_access_token("unverified-convert-1")
+        with patch("app.main.process_job_task.delay"):
+            r = client.post(
+                "/convert",
+                files={"file": ("a.pdf", b"%PDF-1.4 dummy", "application/pdf")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert r.status_code == 403
+
+    def test_convert_allowed_for_verified_email_account(self, tmp_path):
+        from app.auth import create_access_token
+        from app.database import SessionLocal
+        from app.models import User
+
+        client, _ = make_client(tmp_path)
+        db = SessionLocal()
+        db.merge(User(
+            id="verified-convert-1", email="verifiedconvert@x.com", provider="password",
+            provider_id="verifiedconvert@x.com", password_hash="h", email_verified=True,
+        ))
+        db.commit()
+        db.close()
+
+        token = create_access_token("verified-convert-1")
+        with patch("app.main.process_job_task.delay"):
+            r = client.post(
+                "/convert",
+                files={"file": ("a.pdf", b"%PDF-1.4 dummy", "application/pdf")},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert r.status_code == 200
