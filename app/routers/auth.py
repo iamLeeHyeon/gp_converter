@@ -1,6 +1,9 @@
 import os
-import jwt
 import secrets
+from datetime import datetime, timedelta, timezone
+
+import bcrypt
+import jwt
 import httpx
 from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -11,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth import create_access_token, create_refresh_token, decode_token
 from app.database import get_db
 from app.models import User
+from app.tasks import send_verification_email_task
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -155,3 +159,80 @@ def refresh_tokens(body: RefreshRequest):
         "access_token": create_access_token(user_id),
         "refresh_token": create_refresh_token(user_id),
     }
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/register")
+def register(body: RegisterRequest, db: Session = Depends(get_db)):
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="비밀번호는 8자 이상이어야 합니다.")
+
+    existing = db.query(User).filter_by(email=body.email).first()
+    if existing:
+        if existing.provider != "password":
+            raise HTTPException(
+                status_code=400,
+                detail=f"이미 {existing.provider.capitalize()}로 가입된 이메일입니다. "
+                       f"{existing.provider.capitalize()} 로그인을 사용하세요.",
+            )
+        raise HTTPException(status_code=400, detail="이미 가입된 이메일입니다.")
+
+    password_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    token = secrets.token_urlsafe(32)
+    user = User(
+        email=body.email,
+        provider="password",
+        provider_id=body.email,
+        password_hash=password_hash,
+        email_verified=False,
+        verification_token=token,
+        verification_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    send_verification_email_task.delay(user.id)
+
+    return {
+        "access_token": create_access_token(user.id),
+        "refresh_token": create_refresh_token(user.id),
+    }
+
+
+@router.get("/verify")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(verification_token=token).first()
+    if not user or not user.verification_token_expires_at:
+        return RedirectResponse(f"{_FRONTEND}/login?verify=expired")
+
+    expires_at = user.verification_token_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        return RedirectResponse(f"{_FRONTEND}/login?verify=expired")
+
+    user.email_verified = True
+    user.verification_token = None
+    user.verification_token_expires_at = None
+    db.commit()
+    return RedirectResponse(f"{_FRONTEND}/login?verify=success")
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
+@router.post("/resend-verification")
+def resend_verification(body: ResendVerificationRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=body.email, provider="password").first()
+    if user and not user.email_verified:
+        user.verification_token = secrets.token_urlsafe(32)
+        user.verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        db.commit()
+        send_verification_email_task.delay(user.id)
+    return {"message": "인증 이메일이 발송되었으면 잠시 후 확인해주세요."}
