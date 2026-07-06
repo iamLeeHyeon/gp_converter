@@ -20,7 +20,7 @@ export default function FileList({ onSelect }: Props) {
         <li key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
           <button
             onClick={async () => {
-              const buf = await api.getResult(f.id)  // Phase 1에서 /files/{id}/gp5로 교체
+              const buf = await api.getGP5Buffer(f.id)
               onSelect(buf, f.id)
             }}
             style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}

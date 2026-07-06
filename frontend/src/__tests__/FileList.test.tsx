@@ -13,8 +13,9 @@ vi.mock('../store/fileStore', () => ({
     remove: vi.fn(),
   }),
 }))
-vi.mock('../lib/api', () => ({ api: { getResult: vi.fn().mockResolvedValue(new ArrayBuffer(8)) } }))
+vi.mock('../lib/api', () => ({ api: { getGP5Buffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)) } }))
 
+import { api } from '../lib/api'
 import FileList from '../components/FileManager/FileList'
 
 test('파일 목록 렌더링', () => {
@@ -23,9 +24,10 @@ test('파일 목록 렌더링', () => {
   expect(screen.getByText('Song B')).toBeInTheDocument()
 })
 
-test('파일 클릭 시 onSelect 호출', async () => {
+test('파일 클릭 시 api.getGP5Buffer(fileId) 호출 후 onSelect 호출', async () => {
   const onSelect = vi.fn()
   render(<FileList onSelect={onSelect} />)
   await userEvent.click(screen.getByText('Song A'))
   await vi.waitFor(() => expect(onSelect).toHaveBeenCalled())
+  expect(api.getGP5Buffer).toHaveBeenCalledWith('1')
 })
