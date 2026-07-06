@@ -56,6 +56,16 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  async refreshToken(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
+    const res = await fetch('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+
   async upload(file: File): Promise<{ job_id: string; file_id: string | null }> {
     const fd = new FormData()
     fd.append('file', file)

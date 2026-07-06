@@ -13,14 +13,25 @@ import UploadButton from './components/FileManager/UploadButton'
 import FileList from './components/FileManager/FileList'
 import BillingPanel from './components/Billing/BillingPanel'
 
+// 액세스 토큰 수명(15분)보다 여유있게 10분마다 갱신 — 그냥 두면 세션이 조용히
+// 죽어서(에러 없이) 로그인된 것처럼 보이는 화면에서 실제로는 익명으로 동작하는
+// 혼란스러운 상태가 된다(예: 변환은 되는데 "내 파일"에 저장이 안 됨).
+const TOKEN_REFRESH_INTERVAL_MS = 10 * 60 * 1000
+
 function MainPage() {
   const [gp5Buffer, setGp5Buffer] = useState<ArrayBuffer | null>(null)
-  const { token, emailVerified, logout, fetchMe } = useAuthStore()
+  const { token, emailVerified, logout, fetchMe, refreshAccessToken } = useAuthStore()
   const { setFileId, clearHistory } = useEditorStore()
 
   useEffect(() => {
     if (token) fetchMe()
   }, [token])
+
+  useEffect(() => {
+    if (!token) return
+    const id = setInterval(() => { refreshAccessToken() }, TOKEN_REFRESH_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [token, refreshAccessToken])
 
   const handleComplete = (_jobId: string, buf: ArrayBuffer, fileId?: string | null) => {
     clearHistory()
