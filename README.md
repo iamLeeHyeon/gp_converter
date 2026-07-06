@@ -133,6 +133,8 @@ docker compose down -v
 - SQLite를 그대로 쓴다 — 단일 노드 전제이며 수평 확장은 지원하지 않는다.
 - Audiveris의 Linux 릴리스가 x86_64 전용이라 `platform: linux/amd64`로 고정돼 있다(Apple Silicon 등에서는 에뮬레이션으로 동작, 느림).
 
+**이메일+비밀번호로 자체 가입도 가능**하다(Google/GitHub 계정 없이). `SMTP_*` 환경변수를 안 채워도 가입/로그인 자체는 되지만, 인증메일이 실제로 발송되지 않으므로(로그에만 남음) `/convert`가 계속 403으로 막힌다 — 로컬 개발 중엔 서버 로그에서 인증 링크(`.../auth/verify?token=...`)를 직접 찾아 브라우저로 열면 된다.
+
 ## 환경변수
 
 | 변수 | 기본값 | 설명 |
@@ -153,6 +155,12 @@ docker compose down -v
 | `GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth 클라이언트 시크릿 |
 | `GITHUB_CLIENT_ID` | 없음 | GitHub OAuth 클라이언트 ID |
 | `GITHUB_CLIENT_SECRET` | 없음 | GitHub OAuth 클라이언트 시크릿 |
+| `SMTP_HOST` | 없음(선택) | 이메일 인증/비번재설정 발송용 SMTP 서버. 미설정 시 발송 스킵(로그만 남김) — dev/test 환경 대비 |
+| `SMTP_PORT` | `587` | SMTP 포트 |
+| `SMTP_USERNAME` | 없음 | SMTP 인증 계정(Gmail이면 앱 비밀번호 발급 필요) |
+| `SMTP_PASSWORD` | 없음 | SMTP 인증 비밀번호 |
+| `SMTP_FROM_EMAIL` | `SMTP_USERNAME`과 동일 | 발신자 이메일 주소 |
+| `SMTP_USE_TLS` | `true` | STARTTLS 사용 여부 |
 | `GUITAR_OMR_DIR` | 없음(선택) | [guitar-tab-omr](https://github.com/LIU9293/guitar-tab-omr) 레포 루트 경로. 탭보표가 있는 디지털 PDF의 현/프렛을 OMR 모델로 정확히 읽어낸다. 미설정 시 자동으로 기존 휴리스틱(최저프렛 추정)으로 폴백 — 필수 아님 |
 | `GUITAR_OMR_MODEL_DIR` | 없음(선택) | 로컬에 이미 받아둔 모델 체크포인트 디렉토리. 없으면 `GUITAR_OMR_MODEL_REPO`에서 Hugging Face로 자동 다운로드 |
 | `GUITAR_OMR_MODEL_REPO` | `kk9293/guitar-tab-omr` | Hugging Face 모델 레포(다운로드용), 보통 기본값 그대로 사용 |
