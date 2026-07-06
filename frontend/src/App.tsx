@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { useEditorStore } from './store/editorStore'
 import LoginPage from './components/Auth/LoginPage'
@@ -61,7 +61,9 @@ function MainPage() {
         {token ? (
           <FileList onSelect={handleFileSelect} />
         ) : (
-          <p style={{ fontSize: 13, color: '#666' }}>로그인하면 파일이 저장됩니다</p>
+          <p style={{ fontSize: 13, color: '#666' }}>
+            <Link to="/login">로그인</Link>하면 파일이 저장됩니다
+          </p>
         )}
         {token && (
           <button onClick={logout} style={{ marginTop: 16, fontSize: 12 }}>로그아웃</button>
