@@ -212,3 +212,89 @@ class TestMe:
     def test_me_requires_auth(self):
         r = client.get("/auth/me")
         assert r.status_code in (401, 403)
+
+
+class TestForgotPassword:
+    def test_forgot_password_dispatches_reset_email_for_password_account(self):
+        try:
+            with patch("app.routers.auth.send_verification_email_task"):
+                client.post("/auth/register", json={"email": "forgot1@x.com", "password": "password123"})
+            with patch("app.routers.auth.send_reset_email_task") as mock_task:
+                r = client.post("/auth/forgot-password", json={"email": "forgot1@x.com"})
+            assert r.status_code == 200
+
+            db = SessionLocal()
+            user = db.query(User).filter_by(email="forgot1@x.com").first()
+            assert user.reset_token is not None
+            db.close()
+            mock_task.delay.assert_called_once_with(user.id)
+        finally:
+            _cleanup("forgot1@x.com")
+
+    def test_forgot_password_returns_200_for_nonexistent_email(self):
+        with patch("app.routers.auth.send_reset_email_task") as mock_task:
+            r = client.post("/auth/forgot-password", json={"email": "noexist2@x.com"})
+        assert r.status_code == 200
+        mock_task.delay.assert_not_called()
+
+    def test_forgot_password_returns_200_for_oauth_account_without_dispatching(self):
+        """OAuth 전용 계정은 재설정할 비밀번호가 없으므로 메일 발송 안 하되 200은 동일하게."""
+        db = SessionLocal()
+        db.add(User(id="oauth-forgot-1", email="oauthforgot@x.com", provider="google", provider_id="g-f-1"))
+        db.commit()
+        db.close()
+        try:
+            with patch("app.routers.auth.send_reset_email_task") as mock_task:
+                r = client.post("/auth/forgot-password", json={"email": "oauthforgot@x.com"})
+            assert r.status_code == 200
+            mock_task.delay.assert_not_called()
+        finally:
+            _cleanup("oauthforgot@x.com")
+
+
+class TestResetPassword:
+    def test_reset_password_with_valid_token_changes_password(self):
+        try:
+            with patch("app.routers.auth.send_verification_email_task"):
+                client.post("/auth/register", json={"email": "reset1@x.com", "password": "oldpassword1"})
+            with patch("app.routers.auth.send_reset_email_task"):
+                client.post("/auth/forgot-password", json={"email": "reset1@x.com"})
+
+            db = SessionLocal()
+            token = db.query(User).filter_by(email="reset1@x.com").first().reset_token
+            db.close()
+
+            r = client.post("/auth/reset-password", json={"token": token, "new_password": "newpassword1"})
+            assert r.status_code == 200
+
+            login_old = client.post("/auth/login", json={"email": "reset1@x.com", "password": "oldpassword1"})
+            assert login_old.status_code == 401
+            login_new = client.post("/auth/login", json={"email": "reset1@x.com", "password": "newpassword1"})
+            assert login_new.status_code == 200
+
+            db = SessionLocal()
+            user = db.query(User).filter_by(email="reset1@x.com").first()
+            assert user.reset_token is None
+            db.close()
+        finally:
+            _cleanup("reset1@x.com")
+
+    def test_reset_password_with_invalid_token_fails(self):
+        r = client.post("/auth/reset-password", json={"token": "no-such-token", "new_password": "newpassword1"})
+        assert r.status_code == 400
+
+    def test_reset_password_with_expired_token_fails(self):
+        from datetime import datetime, timedelta, timezone
+        db = SessionLocal()
+        db.add(User(
+            id="expired-reset-1", email="expiredreset@x.com", provider="password",
+            provider_id="expiredreset@x.com", password_hash="h",
+            reset_token="expired-reset-tok", reset_token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        ))
+        db.commit()
+        db.close()
+        try:
+            r = client.post("/auth/reset-password", json={"token": "expired-reset-tok", "new_password": "newpassword1"})
+            assert r.status_code == 400
+        finally:
+            _cleanup("expiredreset@x.com")

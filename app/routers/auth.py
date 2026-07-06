@@ -15,7 +15,7 @@ from app.auth import create_access_token, create_refresh_token, decode_token
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.tasks import send_verification_email_task
+from app.tasks import send_verification_email_task, send_reset_email_task
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -265,3 +265,45 @@ def me(current_user: User = Depends(get_current_user)):
         "plan": current_user.plan,
         "email_verified": current_user.email_verified,
     }
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+@router.post("/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=body.email, provider="password").first()
+    if user:
+        user.reset_token = secrets.token_urlsafe(32)
+        user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        db.commit()
+        send_reset_email_task.delay(user.id)
+    return {"message": "메일이 발송되었으면 잠시 후 확인해주세요."}
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="비밀번호는 8자 이상이어야 합니다.")
+
+    user = db.query(User).filter_by(reset_token=body.token).first()
+    if not user or not user.reset_token_expires_at:
+        raise HTTPException(status_code=400, detail="유효하지 않거나 만료된 토큰입니다.")
+
+    expires_at = user.reset_token_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="유효하지 않거나 만료된 토큰입니다.")
+
+    user.password_hash = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user.reset_token = None
+    user.reset_token_expires_at = None
+    db.commit()
+    return {"message": "비밀번호가 변경되었습니다."}
