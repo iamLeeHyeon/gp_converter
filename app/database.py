@@ -55,5 +55,29 @@ def run_sqlite_migrations(engine) -> None:
                 "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_stripe_customer_id "
                 "ON users (stripe_customer_id)"
             ))
+            if "password_hash" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR"))
+            if "email_verified" not in user_cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 1"
+                ))
+            if "verification_token" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN verification_token VARCHAR"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_verification_token "
+                "ON users (verification_token)"
+            ))
+            if "verification_token_expires_at" not in user_cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN verification_token_expires_at DATETIME"
+                ))
+            if "reset_token" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN reset_token VARCHAR"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_reset_token "
+                "ON users (reset_token)"
+            ))
+            if "reset_token_expires_at" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN reset_token_expires_at DATETIME"))
 
         conn.commit()

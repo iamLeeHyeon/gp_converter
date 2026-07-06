@@ -197,3 +197,83 @@ def test_migration_users_table_missing_is_noop(tmp_path):
         conn.commit()
 
     run_sqlite_migrations(engine)  # users 테이블 없어도 에러 없이 통과해야 함
+
+
+def test_migration_adds_password_auth_columns(tmp_path):
+    """구버전 users 테이블에 password_hash/email_verified 등 6개 컬럼을 추가한다."""
+    db_path = tmp_path / "old_users_pw.db"
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "CREATE TABLE users ("
+            "id VARCHAR PRIMARY KEY, email VARCHAR, provider VARCHAR, "
+            "provider_id VARCHAR, plan VARCHAR, created_at DATETIME)"
+        ))
+        conn.commit()
+
+    run_sqlite_migrations(engine)
+
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(users)"))}
+    assert "password_hash" in cols
+    assert "email_verified" in cols
+    assert "verification_token" in cols
+    assert "verification_token_expires_at" in cols
+    assert "reset_token" in cols
+    assert "reset_token_expires_at" in cols
+
+
+def test_migration_backfills_email_verified_true_for_existing_rows(tmp_path):
+    """기존(마이그레이션 전) 행은 전부 OAuth로 만들어졌으므로 email_verified가 True로 백필돼야 한다."""
+    db_path = tmp_path / "old_users_pw2.db"
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "CREATE TABLE users ("
+            "id VARCHAR PRIMARY KEY, email VARCHAR, provider VARCHAR, "
+            "provider_id VARCHAR, plan VARCHAR, created_at DATETIME)"
+        ))
+        conn.execute(sa.text(
+            "INSERT INTO users (id, email, provider, provider_id) "
+            "VALUES ('u1', 'a@x.com', 'google', 'gid1')"
+        ))
+        conn.commit()
+
+    run_sqlite_migrations(engine)
+
+    with engine.connect() as conn:
+        row = conn.execute(sa.text("SELECT email_verified FROM users WHERE id='u1'")).fetchone()
+    assert row[0] == 1
+
+
+def test_migration_creates_unique_index_on_verification_token(tmp_path):
+    """verification_token에 unique index가 생성되어야 한다."""
+    db_path = tmp_path / "old_users_pw3.db"
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "CREATE TABLE users ("
+            "id VARCHAR PRIMARY KEY, email VARCHAR, provider VARCHAR, "
+            "provider_id VARCHAR, plan VARCHAR, created_at DATETIME)"
+        ))
+        conn.commit()
+
+    run_sqlite_migrations(engine)
+
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            "INSERT INTO users (id, email, provider, provider_id, verification_token) "
+            "VALUES ('u1', 'a@x.com', 'password', 'a@x.com', 'tok123')"
+        ))
+        conn.commit()
+
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(
+                "INSERT INTO users (id, email, provider, provider_id, verification_token) "
+                "VALUES ('u2', 'b@x.com', 'password', 'b@x.com', 'tok123')"
+            ))
+            conn.commit()
+            raise AssertionError("중복 verification_token insert가 실패해야 하는데 성공함")
+        except sa.exc.IntegrityError:
+            pass

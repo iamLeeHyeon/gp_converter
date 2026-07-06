@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -16,6 +16,12 @@ class User(Base):
     provider_id = Column(String, nullable=False)
     plan = Column(String, nullable=False, default="free")
     stripe_customer_id = Column(String, unique=True, nullable=True, index=True)
+    password_hash = Column(String, nullable=True)
+    email_verified = Column(Boolean, nullable=False, default=True)
+    verification_token = Column(String, unique=True, nullable=True, index=True)
+    verification_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    reset_token = Column(String, unique=True, nullable=True, index=True)
+    reset_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
