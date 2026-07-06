@@ -65,6 +65,16 @@ celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
 
 **주의:** `-A app.celery_app`이 아니라 `-A app.tasks:celery_app`으로 띄워야 한다. `app/celery_app.py`는 Celery 앱 인스턴스만 정의하고 `process_job_task`는 `app/tasks.py`에 정의되는데, 워커 프로세스가 `-A app.celery_app`로만 뜨면 `app/tasks.py`를 임포트한 적이 없어 task 자체를 모른다(`celery -A app.celery_app worker` → `[tasks]` 목록이 비어있고, 실제 작업을 보내면 `KeyError: 'gp_converter.process_job'`로 워커가 거부한다). `app.tasks`를 진입점으로 지정해야 그 모듈이 임포트되면서 `celery_app`을 가져오고 task 데코레이터가 실행돼 등록된다.
 
+**주의 2:** `app/main.py`만 `load_dotenv()`를 호출한다 — Celery 워커(`app/tasks.py`/`app/celery_app.py`)는 `.env`를 전혀 읽지 않는다. 그래서 `GPC_AUDIVERIS_CMD`/`GUITAR_OMR_DIR` 같은 변수를 `.env`에만 적어두면 웹서버(uvicorn)에는 적용되지만 워커에는 적용되지 않는다 — 워커를 띄우는 바로 그 셸에서 직접 `export`해야 한다:
+
+```bash
+export GPC_AUDIVERIS_CMD=/Applications/Audiveris.app/Contents/MacOS/Audiveris  # 맥 예시
+export GUITAR_OMR_DIR=/path/to/guitar-tab-omr  # 사용 안 하면 생략 가능
+celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
+```
+
+또한 `celery` 명령이 PATH 순서상 다른 파이썬 환경(예: Anaconda)으로 조용히 대체 실행될 수 있으니, 반드시 프로젝트 가상환경의 `celery`를 명시적으로 쓴다: `.venv/bin/celery -A app.tasks:celery_app worker ...`
+
 ### 4. 서버 실행
 
 ```bash
@@ -143,8 +153,13 @@ docker compose down -v
 | `GOOGLE_CLIENT_SECRET` | 없음 | Google OAuth 클라이언트 시크릿 |
 | `GITHUB_CLIENT_ID` | 없음 | GitHub OAuth 클라이언트 ID |
 | `GITHUB_CLIENT_SECRET` | 없음 | GitHub OAuth 클라이언트 시크릿 |
+| `GUITAR_OMR_DIR` | 없음(선택) | [guitar-tab-omr](https://github.com/LIU9293/guitar-tab-omr) 레포 루트 경로. 탭보표가 있는 디지털 PDF의 현/프렛을 OMR 모델로 정확히 읽어낸다. 미설정 시 자동으로 기존 휴리스틱(최저프렛 추정)으로 폴백 — 필수 아님 |
+| `GUITAR_OMR_MODEL_DIR` | 없음(선택) | 로컬에 이미 받아둔 모델 체크포인트 디렉토리. 없으면 `GUITAR_OMR_MODEL_REPO`에서 Hugging Face로 자동 다운로드 |
+| `GUITAR_OMR_MODEL_REPO` | `kk9293/guitar-tab-omr` | Hugging Face 모델 레포(다운로드용), 보통 기본값 그대로 사용 |
 
 `STORAGE_BACKEND=s3`일 때는 위 세 변수 외에 boto3 표준 AWS 자격증명 환경변수(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, 필요시 `AWS_REGION`)도 반드시 설정해야 한다. 이 프로젝트는 별도 자격증명 변수명을 만들지 않고 boto3의 기본 자격증명 체인(env → 공유 credentials 파일 → IAM 역할 순)을 그대로 사용한다.
+
+`GUITAR_OMR_DIR`을 쓰려면 별도로 [guitar-tab-omr](https://github.com/LIU9293/guitar-tab-omr) 레포를 로컬에 clone하고, **그 레포의 `requirements.txt`(torch/torchvision/timm/huggingface_hub/pillow)를 gp_converter 자체 `.venv`에 설치**해야 한다(`pip install -r <guitar-tab-omr 경로>/requirements.txt`) — OMR 추론 스크립트가 별도 venv가 아니라 gp_converter를 실행 중인 파이썬 인터프리터(`sys.executable`)로 그대로 실행되기 때문. 또한 그 레포의 `scripts/guitar_omr_*.py`가 Python 3.10+ 문법(`X | None`)을 쓰므로, gp_converter를 Python 3.9로 돌린다면 해당 파일들 맨 위에 `from __future__ import annotations`를 추가해야 임포트가 된다.
 
 **docker-compose로 실행할 때**는 `CELERY_BROKER_URL`, `DATABASE_URL`, `GPC_AUDIVERIS_CMD`, `GPC_JOBS_DIR` 네 변수를 `docker-compose.yml`/`Dockerfile`이 이미 컨테이너 내부 배선에 맞게 고정해두므로 `.env`에 따로 설정할 필요가 없다(`.env.example` 참고).
 
