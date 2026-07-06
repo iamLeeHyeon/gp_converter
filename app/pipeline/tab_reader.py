@@ -162,6 +162,17 @@ def _extract_region_notes(chars: List[_CharBox], region: TabStaffRegion) -> List
     return notes
 
 
+def has_multiple_strings(notes: List[TabNote]) -> bool:
+    """추출된 탭 노트가 2개 이상의 서로 다른 현에 걸쳐 있는지 확인한다.
+
+    오선보 위 마디번호나 8va 표시선 등이 우연히 보표 줄 간격과 같은 위치에
+    있어 6번째 탭선으로 오탐지되는 경우, 그 자리에서 추출되는 숫자(있다면)는
+    전부 같은(가장 가까운) 한 줄에만 배정된다. 진짜 탭이라면 곡 전체에서
+    여러 현을 오갔을 게 거의 확실하므로, 이 신호를 오탐지 판별에 쓴다.
+    """
+    return len({n.string for n in notes}) >= 2
+
+
 def extract_tab_notes(pdf_path: str, regions: List[TabStaffRegion]) -> List[TabNote]:
     """탭보표 영역에서 (현, 프렛) 순서열을 보표 순서대로 추출한다."""
     notes: List[TabNote] = []

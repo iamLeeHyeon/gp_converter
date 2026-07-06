@@ -9,6 +9,7 @@ from app.pipeline.tab_reader import (
     _try_extend_to_six,
     detect_tab_staves,
     extract_tab_notes,
+    has_multiple_strings,
 )
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -113,3 +114,31 @@ def test_extract_tab_notes_full_fixture():
 
     actual = [(n.string, n.fret) for n in notes]
     assert actual == EXPECTED_TAB_NOTES
+
+
+def test_has_multiple_strings_true_for_real_tab_fixture():
+    """진짜 탭 픽스처는 여러 현에 걸쳐 프렛 숫자가 분포해야 한다."""
+    regions = detect_tab_staves(TAB_PDF)
+    notes = extract_tab_notes(TAB_PDF, regions)
+    assert has_multiple_strings(notes)
+
+
+def test_has_multiple_strings_false_when_all_same_string():
+    """마디번호 등 오탐지로 숫자가 전부 같은 한 현에만 배정되면 False여야 한다.
+
+    Rêverie PDF 실사례 재현: 5선보 위 마디번호("48")가 우연히 보표 줄 간격과
+    같은 위치에 있어 6번째 탭선으로 오탐지됨 — 추출된 숫자가 전부 같은
+    (가장 가까운) 한 줄에만 배정된다.
+    """
+    notes = [TabNote(string=1, fret=4), TabNote(string=1, fret=8)]
+    assert has_multiple_strings(notes) is False
+
+
+def test_has_multiple_strings_false_when_empty():
+    """숫자가 아예 없으면(오탐지 or 문자추출 불가) False여야 한다."""
+    assert has_multiple_strings([]) is False
+
+
+def test_has_multiple_strings_true_when_two_distinct_strings():
+    notes = [TabNote(string=1, fret=0), TabNote(string=1, fret=2), TabNote(string=3, fret=5)]
+    assert has_multiple_strings(notes) is True
