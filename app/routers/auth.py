@@ -15,6 +15,7 @@ from app.auth import create_access_token, create_refresh_token, decode_token
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
+from app.rate_limit import rate_limit
 from app.tasks import send_verification_email_task, send_reset_email_task
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -168,7 +169,7 @@ class RegisterRequest(BaseModel):
 
 
 @router.post("/register")
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+def register(body: RegisterRequest, db: Session = Depends(get_db), _=Depends(rate_limit("register"))):
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="비밀번호는 8자 이상이어야 합니다.")
 
@@ -229,7 +230,7 @@ class ResendVerificationRequest(BaseModel):
 
 
 @router.post("/resend-verification")
-def resend_verification(body: ResendVerificationRequest, db: Session = Depends(get_db)):
+def resend_verification(body: ResendVerificationRequest, db: Session = Depends(get_db), _=Depends(rate_limit("resend-verification"))):
     user = db.query(User).filter_by(email=body.email, provider="password").first()
     if user and not user.email_verified:
         user.verification_token = secrets.token_urlsafe(32)
@@ -245,7 +246,7 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(body: LoginRequest, db: Session = Depends(get_db), _=Depends(rate_limit("login"))):
     user = db.query(User).filter_by(email=body.email, provider="password").first()
     if not user or not user.password_hash:
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
@@ -272,7 +273,7 @@ class ForgotPasswordRequest(BaseModel):
 
 
 @router.post("/forgot-password")
-def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db), _=Depends(rate_limit("forgot-password"))):
     user = db.query(User).filter_by(email=body.email, provider="password").first()
     if user:
         user.reset_token = secrets.token_urlsafe(32)
