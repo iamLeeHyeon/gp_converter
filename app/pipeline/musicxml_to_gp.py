@@ -401,7 +401,7 @@ def _collect_lyrics(score) -> Tuple[Optional[int], str]:
     """악보 전체에서 가사를 순서대로 모아 한 줄로 합친다(1절만, YAGNI).
 
     음절이 이어지면(syllabic이 'middle'|'end') 앞 토큰에 공백 없이 '+'로 붙인다
-    (GP 관례). 여러 줄(verse) 지원은 안 함 — 첫 줄만 채운다.
+    (GP 관례). 여러 줄(verse) 지원은 안 함 — 첫 줄만 채운다(1절 ly.number==1만).
     """
     part = score.parts[0]
     tokens: List[str] = []
@@ -413,6 +413,8 @@ def _collect_lyrics(score) -> Tuple[Optional[int], str]:
             if starting_measure is None:
                 starting_measure = m.number
             for ly in n.lyrics:
+                if ly.number != 1:
+                    continue
                 if ly.syllabic in ("middle", "end") and tokens:
                     tokens[-1] = tokens[-1] + "+" + ly.text
                 else:
@@ -762,11 +764,22 @@ def musicxml_to_gp5(
 
     try:
         song = _build_song(measures_data, tab_hints=tab_hints)
+    except Exception as e:
+        raise GpConvertError("GP5 쓰기 실패") from e
+
+    # ponytail: 가사 매핑 실패가 전체 변환을 막으면 안 됨. 실패 시 경고만 남기고 계속 진행.
+    try:
         starting_measure, lyrics_text = _collect_lyrics(score)
-        if lyrics_text:
-            song.lyrics.trackChoice = 0
-            song.lyrics.lines[0].startingMeasure = starting_measure or 1
-            song.lyrics.lines[0].lyrics = lyrics_text
+    except Exception:
+        logger.warning("가사 추출 실패 — 가사 없이 계속 진행", exc_info=True)
+        starting_measure, lyrics_text = None, ""
+
+    if lyrics_text:
+        song.lyrics.trackChoice = 0
+        song.lyrics.lines[0].startingMeasure = 1 if starting_measure is None else starting_measure
+        song.lyrics.lines[0].lyrics = lyrics_text
+
+    try:
         guitarpro.write(song, gp5_path)
     except Exception as e:
         raise GpConvertError("GP5 쓰기 실패") from e

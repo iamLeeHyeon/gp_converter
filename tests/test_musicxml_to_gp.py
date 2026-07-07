@@ -1394,3 +1394,87 @@ def test_lyrics_joined_with_plus_for_syllable_continuation(tmp_path):
     song = guitarpro.parse(out)
     assert song.lyrics.lines[0].lyrics == "Hel+lo world"
     assert song.lyrics.lines[0].startingMeasure == 1
+
+
+_MULTI_VERSE_LYRICS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <lyric number="1"><syllabic>single</syllabic><text>first</text></lyric>
+        <lyric number="2"><syllabic>single</syllabic><text>second</text></lyric>
+      </note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <lyric number="1"><syllabic>single</syllabic><text>verse</text></lyric>
+        <lyric number="2"><syllabic>single</syllabic><text>verse</text></lyric>
+      </note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_lyrics_verse_2_filtered_out_only_verse_1_used(tmp_path):
+    """여러 절이 섞인 MusicXML에서 1절(number='1')만 골라야 하고 2절은 무시돼야 한다."""
+    xml_path = tmp_path / "multiverse.musicxml"
+    xml_path.write_text(_MULTI_VERSE_LYRICS_XML, encoding="utf-8")
+    out = str(tmp_path / "multiverse.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    # 1절만: "first verse"
+    assert song.lyrics.lines[0].lyrics == "first verse"
+    # 2절 텍스트("second verse")가 섞여 들어가면 안 됨
+    assert "second" not in song.lyrics.lines[0].lyrics
+
+
+def test_lyrics_pickup_measure_zero_not_miscast_to_one(tmp_path):
+    """첫 가사가 0번 마디(pickup/anacrusis)에 있으면 startingMeasure=0 유지돼야 한다.
+
+    버그였던 동작: 0 or 1이 1로 평가되면서 마디 번호가 틀어졌다.
+    """
+    # anacrusis가 0번으로 표기되는 MusicXML (음악이론 관례)
+    anacrusis_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="0">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <lyric><syllabic>single</syllabic><text>Up</text></lyric>
+      </note>
+    </measure>
+    <measure number="1">
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "anacrusis.musicxml"
+    xml_path.write_text(anacrusis_xml, encoding="utf-8")
+    out = str(tmp_path / "anacrusis.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.lyrics.lines[0].startingMeasure == 0, "마디 0(anacrusis)이 1로 오류 변환돼선 안 됨"
+
+
+def test_lyrics_extraction_failure_does_not_fail_entire_conversion(tmp_path):
+    """_collect_lyrics가 예외를 던져도 변환 전체가 실패하면 안 되고, GP5가 정상 생성돼야 한다."""
+    out = str(tmp_path / "out.gp5")
+
+    with patch("app.pipeline.musicxml_to_gp._collect_lyrics", side_effect=RuntimeError("boom")):
+        result = musicxml_to_gp5(FIXTURE, out)
+
+    # 변환이 성공하고 파일이 생성돼야 한다 (가사만 빠짐)
+    assert result == out
+    assert os.path.exists(out)
+    assert os.path.getsize(out) > 0
+
+    # 파일 자체는 유효한 GP5여야 한다
+    song = guitarpro.parse(out)
+    assert len(song.tracks) > 0

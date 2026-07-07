@@ -7,3 +7,7 @@
 - **인수인계 문서 위치**: handoff 문서 작성 시 스크래치패드(임시 디렉토리) 말고 이 프로젝트 루트의 `handoff/` 디렉토리에 만든다 (gitignore 처리됨, 커밋 대상 아님).
 
 예외: 코드/커밋/PR은 평소대로 작성. 보안 경고·되돌릴 수 없는 작업 확인은 카브맨 생략(단 한글 유지).
+## Output rules
+- When editing code, output ONLY the changed lines or the single modified block — never reprint the whole file.
+- No setup guides, no recaps of what you changed, no explanations unless I explicitly ask.
+- Keep responses tight. If one line answers it, give one line.
