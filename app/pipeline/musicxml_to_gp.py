@@ -156,6 +156,7 @@ class NoteEvent:
     articulations: List[str] = field(default_factory=list)
     grace: Optional[Tuple[int, str]] = None
     tremolo_picking: Optional[int] = None  # music21 Tremolo.numberOfMarks(1|2|3)
+    harmonic: Optional[str] = None  # 'natural' | 'artificial' (music21 Harmonic.harmonicType)
 
 
 @dataclass
@@ -357,6 +358,13 @@ def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List
                     tremolo_picking = expr.numberOfMarks
                     break
 
+        harmonic = None
+        if not isinstance(n, m21chord.Chord):
+            for art in n.articulations:
+                if isinstance(art, m21art.Harmonic):
+                    harmonic = art.harmonicType
+                    break
+
         # 잇단음 감지
         tuplet = None
         if n.duration.tuplets:
@@ -384,7 +392,7 @@ def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List
             grace = (grace_midi, transition)
             pending_grace = None
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic))
     return events
 
 
@@ -666,6 +674,10 @@ def _build_song(
             if ev.tremolo_picking is not None:
                 trem_value = _TREMOLO_MARKS_TO_GPV.get(ev.tremolo_picking, gpm.Duration.eighth)
                 gnote.effect.tremoloPicking = gpm.TremoloPickingEffect(duration=gpm.Duration(value=trem_value))
+            if ev.harmonic == "natural":
+                gnote.effect.harmonic = gpm.NaturalHarmonic()
+            elif ev.harmonic == "artificial":
+                gnote.effect.harmonic = gpm.ArtificialHarmonic()
             if ev.grace is not None and len(ev.pitches) == 1:
                 grace_midi, transition_name = ev.grace
                 sf_grace = _midi_to_string_fret(grace_midi, strings)

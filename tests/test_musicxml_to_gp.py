@@ -1506,3 +1506,30 @@ def test_tremolo_picking_mapped_to_sixteenth_duration(tmp_path):
     note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
     assert note.effect.tremoloPicking is not None
     assert note.effect.tremoloPicking.duration.value == guitarpro.models.Duration.sixteenth
+
+
+_HARMONIC_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><technical><harmonic><natural/></harmonic></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_natural_harmonic_mapped_to_gp5_natural_harmonic(tmp_path):
+    """자연 하모닉 표기가 GP5 NaturalHarmonic으로 매핑돼야 한다."""
+    xml_path = tmp_path / "harmonic.musicxml"
+    xml_path.write_text(_HARMONIC_XML, encoding="utf-8")
+    out = str(tmp_path / "harmonic.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert isinstance(note.effect.harmonic, guitarpro.models.NaturalHarmonic)
