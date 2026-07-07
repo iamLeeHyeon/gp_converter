@@ -70,10 +70,12 @@ celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
 ```bash
 export GPC_AUDIVERIS_CMD=/Applications/Audiveris.app/Contents/MacOS/Audiveris  # 맥 예시
 export GUITAR_OMR_DIR=/path/to/guitar-tab-omr  # 사용 안 하면 생략 가능
-celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
+watchmedo auto-restart -d app -p '*.py' --recursive -- celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
 ```
 
-또한 `celery` 명령이 PATH 순서상 다른 파이썬 환경(예: Anaconda)으로 조용히 대체 실행될 수 있으니, 반드시 프로젝트 가상환경의 `celery`를 명시적으로 쓴다: `.venv/bin/celery -A app.tasks:celery_app worker ...`
+또한 `celery` 명령이 PATH 순서상 다른 파이썬 환경(예: Anaconda)으로 조용히 대체 실행될 수 있으니, 반드시 프로젝트 가상환경의 `celery`를 명시적으로 쓴다: `.venv/bin/watchmedo auto-restart -d app -p '*.py' --recursive -- .venv/bin/celery -A app.tasks:celery_app worker ...`
+
+**주의 3:** `uvicorn --reload`와 달리 Celery 워커 자체는 코드가 바뀌어도 절대 다시 읽지 않는다 — `app/` 아래 뭔가 고치고 워커를 재시작하지 않으면, task 시그니처가 실제 코드와 어긋나서 파이프라인이 통째로 죽은 것처럼 보이는 버그가 생긴다. `watchmedo`(`requirements.txt`의 `watchdog` 패키지)로 감싸서 띄우면 `.py` 파일이 바뀔 때마다 워커를 자동으로 재시작해준다.
 
 ### 4. 서버 실행
 
