@@ -521,7 +521,11 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
     최대 2개까지만 voices에 담는다(3개 이상이면 나머지는 버림).
     """
     part = score.parts[0]
-    raw_technicals = _scan_raw_technicals(xml_path)
+    try:
+        raw_technicals = _scan_raw_technicals(xml_path)
+    except Exception:
+        logger.warning("벤드/팜뮤트 raw XML 스캔 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
+        raw_technicals = {}
     measures = list(part.getElementsByClass(m21stream.Measure))
 
     repeat_alt_by_measure: Dict[int, int] = {}

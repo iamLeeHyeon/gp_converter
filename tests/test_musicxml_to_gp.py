@@ -1607,3 +1607,20 @@ def test_bend_and_palm_mute_mapped_via_raw_xml_correlation(tmp_path):
     assert note0.effect.palmMute is False
     assert note1.effect.palmMute is True
     assert note1.effect.bend is None
+
+
+def test_scan_raw_technicals_failure_does_not_fail_entire_conversion(tmp_path):
+    """_scan_raw_technicals가 예외를 던져도 변환 전체가 실패하면 안 되고, GP5가 정상 생성돼야 한다."""
+    out = str(tmp_path / "out.gp5")
+
+    with patch("app.pipeline.musicxml_to_gp._scan_raw_technicals", side_effect=RuntimeError("boom")):
+        result = musicxml_to_gp5(FIXTURE, out)
+
+    # 변환이 성공하고 파일이 생성돼야 한다 (벤드/팜뮤트만 빠짐)
+    assert result == out
+    assert os.path.exists(out)
+    assert os.path.getsize(out) > 0
+
+    # 파일 자체는 유효한 GP5여야 한다
+    song = guitarpro.parse(out)
+    assert len(song.tracks) > 0
