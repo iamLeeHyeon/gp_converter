@@ -1,14 +1,18 @@
 import os
-from dataclasses import dataclass, field
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _env(name: str, default: str) -> str:
-    return os.environ.get(name, default)
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="GPC_")
 
+    max_upload_bytes: int = 20 * 1024 * 1024
+    step_timeout_sec: int = 300
+    audiveris_cmd: str = "audiveris"
+    jobs_dir: str = "jobs"
 
-@dataclass
-class Settings:
-    max_upload_bytes: int = field(default_factory=lambda: int(_env("GPC_MAX_UPLOAD_BYTES", str(20 * 1024 * 1024))))
-    step_timeout_sec: int = field(default_factory=lambda: int(_env("GPC_STEP_TIMEOUT_SEC", "300")))
-    audiveris_cmd: str = field(default_factory=lambda: _env("GPC_AUDIVERIS_CMD", "audiveris"))
-    jobs_dir: str = field(default_factory=lambda: os.path.abspath(_env("GPC_JOBS_DIR", "jobs")))
+    @field_validator("jobs_dir")
+    @classmethod
+    def _abspath(cls, v: str) -> str:
+        return os.path.abspath(v)

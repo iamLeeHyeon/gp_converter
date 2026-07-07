@@ -17,3 +17,4 @@ celery[redis]>=5.3,<6
 boto3>=1.34,<2
 bcrypt>=4.0,<5
 watchdog>=4.0,<5  # 로컬 dev: watchmedo로 celery 워커 자동 재시작 (celery 자체엔 --reload 없음)
+pydantic-settings>=2.0,<3
