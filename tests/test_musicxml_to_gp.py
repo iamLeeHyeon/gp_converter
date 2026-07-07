@@ -1360,3 +1360,37 @@ def test_chord_symbol_name_attached_to_first_beat(tmp_path):
     beat = song.tracks[0].measures[0].voices[0].beats[0]
     assert beat.effect.chord is not None
     assert beat.effect.chord.name == "Am7"
+
+
+_LYRICS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <lyric><syllabic>begin</syllabic><text>Hel</text></lyric>
+      </note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <lyric><syllabic>end</syllabic><text>lo</text></lyric>
+      </note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <lyric><syllabic>single</syllabic><text>world</text></lyric>
+      </note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_lyrics_joined_with_plus_for_syllable_continuation(tmp_path):
+    """가사 음절이 이어지면(middle/end) '+'로 붙고, 새 단어는 공백으로 구분돼야 한다."""
+    xml_path = tmp_path / "lyrics.musicxml"
+    xml_path.write_text(_LYRICS_XML, encoding="utf-8")
+    out = str(tmp_path / "lyrics.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.lyrics.lines[0].lyrics == "Hel+lo world"
+    assert song.lyrics.lines[0].startingMeasure == 1
