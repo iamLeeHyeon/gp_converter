@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { api } from '../../lib/api'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -13,20 +14,14 @@ export default function LoginPage() {
 
   const handleLogin = async () => {
     setError('')
-    const res = await fetch('/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      setError(body.detail || '로그인에 실패했습니다.')
-      return
+    try {
+      const data = await api.login(email, password)
+      setToken(data.access_token, data.refresh_token)
+      await fetchMe()
+      navigate('/')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '로그인에 실패했습니다.')
     }
-    const data = await res.json()
-    setToken(data.access_token, data.refresh_token)
-    await fetchMe()
-    navigate('/')
   }
 
   return (

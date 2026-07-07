@@ -18,11 +18,9 @@ export default function ShareModal({ fileId, onClose }: Props) {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
     api.getShareStatus(fileId)
-      .then(res => { if (!cancelled && isMountedRef.current) setInfo(res) })
-      .finally(() => { if (!cancelled && isMountedRef.current) setLoading(false) })
-    return () => { cancelled = true }
+      .then(res => { if (isMountedRef.current) setInfo(res) })
+      .finally(() => { if (isMountedRef.current) setLoading(false) })
   }, [fileId])
 
   async function handleCreate() {

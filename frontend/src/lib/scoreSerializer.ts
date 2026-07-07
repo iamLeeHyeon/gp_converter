@@ -13,7 +13,7 @@ const SLIDE_IN_TYPE_MAP: Record<number, Effect> = {
   2: 'slide-in-above',
 }
 
-function getNoteEffect(note: Record<string, unknown>): Effect | undefined {
+export function getNoteEffect(note: Record<string, unknown>): Effect | undefined {
   if (note.isHammerPullOrigin) return 'hammer-on'
   if (note.isDead) return 'mute'
   if (note.isGhost) return 'ghost'
@@ -26,7 +26,7 @@ function getNoteEffect(note: Record<string, unknown>): Effect | undefined {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeBeat(beat: any): SnapshotBeat {
+export function serializeBeat(beat: any): SnapshotBeat {
   const pickStroke = beat.pickStroke as number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const notes: SnapshotNote[] = (beat.isRest ? [] : (beat.notes as any[])).map(

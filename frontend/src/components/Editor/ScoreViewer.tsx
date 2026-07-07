@@ -2,15 +2,14 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { initAlphaTab } from '../../lib/alphatab'
 import type * as alphaTab from '@coderline/alphatab'
 import { useEditorStore } from '../../store/editorStore'
-import { serializeScore } from '../../lib/scoreSerializer'
+import { serializeScore, serializeBeat, getNoteEffect } from '../../lib/scoreSerializer'
 import { applyEdit, type EditPayload } from '../../lib/scoreApplier'
-import { useSyncFile } from '../../lib/useSyncFile'
-import { api } from '../../lib/api'
+import { useSyncFile, syncAndReload as syncFileAndReload } from '../../lib/useSyncFile'
 import EditPanel from './EditPanel'
 import ExportMenu from './ExportMenu'
 import StructurePanel from './StructurePanel'
 import TrackPanel from './TrackPanel'
-import type { NotePosition, Dynamic, Effect, ScoreSnapshot } from '../../lib/scoreTypes'
+import type { NotePosition, ScoreSnapshot } from '../../lib/scoreTypes'
 
 interface Props {
   gp5Buffer: ArrayBuffer | null
@@ -23,26 +22,18 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   const [loaded, setLoaded] = useState(false)
   const [leftTab, setLeftTab] = useState<'files' | 'tracks'>('files')
 
-  const { selected, fileId, present, saveStatus, setSelected, pushSnapshot, undo, redo, setGp5Buffer, setSaveStatus } = useEditorStore()
+  const { selected, fileId, present, saveStatus, setSelected, pushSnapshot, undo, redo } = useEditorStore()
   const storeGp5Buffer = useEditorStore(s => s.gp5Buffer)
 
-  // 현재 선택된 beat/note 정보 추출
+  // 현재 선택된 beat/note 정보 추출 (scoreSerializer의 직렬화 로직 재사용)
   const currentBeat = (() => {
     if (!selected || !apiRef.current?.score) return null
-    const api = apiRef.current
     try {
-      const beat = (api.score as any).tracks[selected.trackIndex]
+      const beat = (apiRef.current.score as any).tracks[selected.trackIndex]
         ?.staves[0]?.bars[selected.measureIndex]
         ?.voices[selected.voiceIndex]?.beats[selected.beatIndex]
       if (!beat) return null
-      const DYNAMIC_VALUES: Record<number, Dynamic> = { 0:'ppp',1:'pp',2:'p',3:'mp',4:'mf',5:'f',6:'ff',7:'fff' }
-      return {
-        duration: beat.duration.value,
-        dotted: beat.duration.isDotted,
-        status: beat.isRest ? 'rest' : 'normal',
-        dynamic: DYNAMIC_VALUES[beat.dynamics] ?? 'mf',
-        strumDown: beat.pickStroke === 2 ? true : beat.pickStroke === 1 ? false : undefined,
-      }
+      return serializeBeat(beat)
     } catch { return null }
   })()
 
@@ -54,14 +45,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         ?.voices[selected.voiceIndex]?.beats[selected.beatIndex]
       const note = beat?.notes[selected.noteIndex]
       if (!note) return null
-      const EFFECT_MAP: Record<number, Effect> = { 1:'slide-shift',2:'slide-legato',4:'slide-in-above',8:'slide-out-below' }
-      let effect: Effect | undefined
-      if (note.hammerOrPull) effect = 'hammer-on'
-      else if (note.isMuted) effect = 'mute'
-      else if (note.isGhost) effect = 'ghost'
-      else if (note.harmonicType > 0) effect = 'harmonic'
-      else if (note.slideType > 0) effect = EFFECT_MAP[note.slideType]
-      return { string: note.string, fret: note.fret, effect }
+      return { string: note.string, fret: note.fret, effect: getNoteEffect(note) }
     } catch { return null }
   })()
 
@@ -76,16 +60,8 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   // undo/redo: 구조 편집(마디/트랙 추가삭제 등)은 alphaTab 인플레이스 반영 불가 → 백엔드 재동기화 후 리로드
   const syncAndReload = useCallback(async (snap: ScoreSnapshot) => {
     if (!fileId) return
-    try {
-      setSaveStatus('saving')
-      await api.syncFile(fileId, snap)
-      const buf = await api.getGP5Buffer(fileId)
-      setGp5Buffer(buf)
-      setSaveStatus('saved')
-    } catch {
-      setSaveStatus('error')
-    }
-  }, [fileId, setGp5Buffer, setSaveStatus])
+    await syncFileAndReload(fileId, snap)
+  }, [fileId])
 
   // 자동저장
   useSyncFile(fileId, present)

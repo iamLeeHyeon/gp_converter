@@ -20,7 +20,6 @@ const DURATIONS: Array<1 | 2 | 4 | 8 | 16 | 32> = [1, 2, 4, 8, 16, 32]
 const DYNAMICS: Dynamic[] = ['ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff']
 const EFFECTS: Array<{ value: Effect; label: string }> = [
   { value: 'hammer-on', label: 'H' },
-  { value: 'pull-off', label: 'P' },
   { value: 'slide-shift', label: 'SS' },
   { value: 'slide-legato', label: 'SL' },
   { value: 'slide-in-above', label: 'Si↑' },

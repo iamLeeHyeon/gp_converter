@@ -15,7 +15,10 @@ vi.mock('../lib/alphatab', () => ({
     score: null,
   }),
 }))
-vi.mock('../lib/useSyncFile', () => ({ useSyncFile: vi.fn() }))
+vi.mock('../lib/useSyncFile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/useSyncFile')>()
+  return { ...actual, useSyncFile: vi.fn() }
+})
 vi.mock('../lib/api', () => ({
   api: {
     syncFile: vi.fn().mockResolvedValue({ ok: true }),

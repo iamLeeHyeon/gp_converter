@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '../../store/editorStore'
 import { applyStructuralEdit } from '../../lib/structuralEdit'
-import { api } from '../../lib/api'
+import { syncAndReload } from '../../lib/useSyncFile'
 import type { ScoreSnapshot } from '../../lib/scoreTypes'
 
 const NAME_SYNC_DEBOUNCE_MS = 500
@@ -22,7 +22,7 @@ function detectPreset(tuning: number[] | undefined): string {
 }
 
 export default function TrackPanel() {
-  const { present, selectedTrackIndex, activeVoice, fileId, pushSnapshot, setGp5Buffer, setSaveStatus } =
+  const { present, selectedTrackIndex, activeVoice, fileId, pushSnapshot } =
     useEditorStore()
   const [busy, setBusy] = useState(false)
   const nameSyncTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -37,17 +37,8 @@ export default function TrackPanel() {
   async function syncSnapshot(snap: ScoreSnapshot) {
     if (!fileId) return
     setBusy(true)
-    try {
-      setSaveStatus('saving')
-      await api.syncFile(fileId, snap)
-      const buf = await api.getGP5Buffer(fileId)
-      setGp5Buffer(buf)
-      setSaveStatus('saved')
-    } catch {
-      setSaveStatus('error')
-    } finally {
-      setBusy(false)
-    }
+    await syncAndReload(fileId, snap)
+    setBusy(false)
   }
 
   async function applyAndSync(edit: Parameters<typeof applyStructuralEdit>[1]) {

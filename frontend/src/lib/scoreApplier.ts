@@ -65,7 +65,7 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
     const note = beat.notes[pos.noteIndex]
     clearNoteEffects(note)
     if (edit.value === null) return
-    if (edit.value === 'hammer-on' || edit.value === 'pull-off') {
+    if (edit.value === 'hammer-on') {
       note.isHammerPullOrigin = true
     } else if (edit.value === 'ghost') {
       note.isGhost = true

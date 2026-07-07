@@ -1,5 +1,5 @@
 export type Effect =
-  | 'hammer-on' | 'pull-off'
+  | 'hammer-on'
   | 'slide-shift' | 'slide-legato'
   | 'slide-in-above' | 'slide-out-below'
   | 'mute' | 'ghost' | 'harmonic'

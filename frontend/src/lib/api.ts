@@ -35,12 +35,7 @@ async function downloadBlob(url: string, filename: string): Promise<void> {
     throw new Error(body.detail ?? `HTTP ${res.status}`)
   }
   const blob = await res.blob()
-  const href = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = href
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(href)
+  api.downloadBuffer(await blob.arrayBuffer(), filename)
 }
 
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
@@ -59,6 +54,30 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  async login(email: string, password: string): Promise<{ access_token: string; refresh_token: string }> {
+    return request('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+  },
+
+  async register(email: string, password: string): Promise<{ access_token: string; refresh_token: string }> {
+    return request('/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    await request('/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    })
+  },
+
   async refreshToken(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
     const res = await fetch('/auth/refresh', {
       method: 'POST',

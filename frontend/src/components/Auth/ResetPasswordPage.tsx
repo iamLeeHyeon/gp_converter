@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { api } from '../../lib/api'
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
@@ -15,17 +16,12 @@ export default function ResetPasswordPage() {
       setError('비밀번호가 일치하지 않습니다.')
       return
     }
-    const res = await fetch('/auth/reset-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, new_password: password }),
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      setError(body.detail || '재설정에 실패했습니다.')
-      return
+    try {
+      await api.resetPassword(token, password)
+      navigate('/login')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '재설정에 실패했습니다.')
     }
-    navigate('/login')
   }
 
   return (

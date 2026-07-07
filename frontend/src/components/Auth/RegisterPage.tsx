@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { api } from '../../lib/api'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -17,20 +18,14 @@ export default function RegisterPage() {
       setError('비밀번호가 일치하지 않습니다.')
       return
     }
-    const res = await fetch('/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      setError(body.detail || '회원가입에 실패했습니다.')
-      return
+    try {
+      const data = await api.register(email, password)
+      setToken(data.access_token, data.refresh_token)
+      await fetchMe()
+      setRegistered(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '회원가입에 실패했습니다.')
     }
-    const data = await res.json()
-    setToken(data.access_token, data.refresh_token)
-    await fetchMe()
-    setRegistered(true)
   }
 
   const handleResend = async () => {

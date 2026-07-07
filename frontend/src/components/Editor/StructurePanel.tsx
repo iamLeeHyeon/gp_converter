@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useEditorStore } from '../../store/editorStore'
 import { applyStructuralEdit } from '../../lib/structuralEdit'
-import { api } from '../../lib/api'
+import { syncAndReload } from '../../lib/useSyncFile'
 
 const KEY_SIG_LABELS: Record<string, string> = {
   '-7': 'Cb', '-6': 'Gb', '-5': 'Db', '-4': 'Ab',
@@ -11,7 +11,7 @@ const KEY_SIG_LABELS: Record<string, string> = {
 }
 
 export default function StructurePanel() {
-  const { present, selectedMeasureIndex, fileId, pushSnapshot, setGp5Buffer, setSaveStatus } =
+  const { present, selectedMeasureIndex, fileId, pushSnapshot } =
     useEditorStore()
   const [busy, setBusy] = useState(false)
 
@@ -29,17 +29,8 @@ export default function StructurePanel() {
     if (selectedMeasureIndex > newLen - 1) {
       useEditorStore.setState({ selectedMeasureIndex: Math.max(0, newLen - 1) })
     }
-    try {
-      setSaveStatus('saving')
-      await api.syncFile(fileId, next)
-      const buf = await api.getGP5Buffer(fileId)
-      setGp5Buffer(buf)
-      setSaveStatus('saved')
-    } catch {
-      setSaveStatus('error')
-    } finally {
-      setBusy(false)
-    }
+    await syncAndReload(fileId, next)
+    setBusy(false)
   }
 
   return (
