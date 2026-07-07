@@ -448,6 +448,7 @@ def _collect_notes(score) -> List[MeasureData]:
             _drop_phantom_leading_rest(_extract_events(vs, initial_velocity=running_velocity), expected_ql)
             for vs in voice_streams
         ]
+        # 이 마디 voices[0]에서 마지막으로 설정된 velocity를 다음 마디로 이어받는다.
         for ev in voices_events[0]:
             if ev.velocity is not None:
                 running_velocity = ev.velocity
