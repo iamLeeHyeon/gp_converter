@@ -1,15 +1,16 @@
-import os
 from typing import Optional
 
 from app.celery_app import celery_app
+from app.config import Settings
 from app.database import SessionLocal
 from app.email import send_email
 from app.jobs import JobStore
 from app.models import User
 from app.worker import process_job
 
-_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-_BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+_settings = Settings()
+_FRONTEND_URL = _settings.frontend_url
+_BACKEND_URL = _settings.backend_url
 
 
 @celery_app.task(name="gp_converter.process_job")

@@ -1,12 +1,12 @@
-import os
-
 import redis
 from fastapi import HTTPException, Request
+
+from app.config import Settings
 
 RATE_LIMIT_MAX = 20
 RATE_LIMIT_WINDOW_SEC = 3600
 
-_redis_client = redis.from_url(os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"))
+_redis_client = redis.from_url(Settings().celery_broker_url)
 
 
 def rate_limit(endpoint_name: str):

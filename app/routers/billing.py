@@ -5,6 +5,7 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.config import Settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import File, User
@@ -22,7 +23,7 @@ except KeyError as e:
 
 stripe.api_key = _STRIPE_SECRET_KEY
 
-_FRONTEND = os.getenv("FRONTEND_URL", "http://localhost:5173")
+_FRONTEND = Settings().frontend_url
 
 FREE_CONVERSIONS_LIMIT = 3
 FREE_FILES_LIMIT = 5

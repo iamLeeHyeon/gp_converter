@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, create_refresh_token, decode_token
+from app.config import Settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
@@ -31,8 +32,9 @@ except KeyError as e:
         f"필수 환경변수 누락: {e}. .env 파일 또는 환경변수를 설정하세요."
     ) from e
 
-_FRONTEND = os.getenv("FRONTEND_URL", "http://localhost:5173")
-_BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
+_settings = Settings()
+_FRONTEND = _settings.frontend_url
+_BACKEND = _settings.backend_url
 
 
 @router.get("/google")

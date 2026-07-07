@@ -32,7 +32,7 @@ run_sqlite_migrations(engine)
 
 app = FastAPI(title="GP Converter")
 
-_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+_FRONTEND_URL = Settings().frontend_url
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[_FRONTEND_URL],
