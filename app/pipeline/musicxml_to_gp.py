@@ -53,7 +53,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, bar as m21bar, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
+from music21 import converter, bar as m21bar, harmony as m21harmony, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
 
 
 logger = logging.getLogger(__name__)
@@ -442,6 +442,9 @@ def _collect_notes(score) -> List[MeasureData]:
             repeat_close = (m.rightBarline.times or 2) - 1
         repeat_alternative = repeat_alt_by_measure.get(m.number, 0)
 
+        chord_syms = list(m.recurse().getElementsByClass(m21harmony.ChordSymbol))
+        chord_name = chord_syms[0].figure if chord_syms else None
+
         expected_ql = numerator * 4.0 / denominator
         voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
         voices_events = [
@@ -458,6 +461,7 @@ def _collect_notes(score) -> List[MeasureData]:
             is_repeat_open=is_repeat_open,
             repeat_close=repeat_close,
             repeat_alternative=repeat_alternative,
+            chord_name=chord_name,
         ))
 
     # 곡 전체에서 2번째 보이스가 단 한 마디라도 쓰였다면, 그 보이스를 안 쓰는
@@ -660,6 +664,10 @@ def _build_song(
             _fill_voice(
                 measure.voices[vi], events, use_hints=(vi == 0),
                 numerator=md.numerator, denominator=md.denominator,
+            )
+        if md.chord_name is not None and measure.voices[0].beats:
+            measure.voices[0].beats[0].effect.chord = gpm.Chord(
+                length=6, name=md.chord_name, show=False, firstFret=0,
             )
 
     first_mh = song.measureHeaders[0]

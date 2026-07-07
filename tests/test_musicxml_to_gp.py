@@ -1333,3 +1333,30 @@ def test_repeat_and_volta_mapped_to_gp5_measure_headers(tmp_path):
     assert measures[1].repeatClose == 2, "MusicXML times=3 → GP5 repeatClose=2(3-1)"
     assert measures[1].header.repeatAlternative == 0b01, "1번 엔딩 → bit0"
     assert measures[2].header.repeatAlternative == 0b10, "2번 엔딩 → bit1"
+
+
+_CHORD_SYMBOL_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <harmony><root><root-step>A</root-step></root><kind>minor-seventh</kind></harmony>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_chord_symbol_name_attached_to_first_beat(tmp_path):
+    """<harmony> 코드 심볼 이름이 그 마디 첫 비트에 붙어야 한다(다이어그램 없이 이름만)."""
+    xml_path = tmp_path / "chordsym.musicxml"
+    xml_path.write_text(_CHORD_SYMBOL_XML, encoding="utf-8")
+    out = str(tmp_path / "chordsym.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beat = song.tracks[0].measures[0].voices[0].beats[0]
+    assert beat.effect.chord is not None
+    assert beat.effect.chord.name == "Am7"
