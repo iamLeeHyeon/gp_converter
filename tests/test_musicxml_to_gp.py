@@ -1293,3 +1293,43 @@ def test_grace_notes_set_hammer_or_slide_transition(tmp_path):
     grace1 = beats[1].notes[0].effect.grace
     assert grace1 is not None, "두 번째 음(G4)에 꾸밈음이 있어야 함"
     assert grace1.transition == guitarpro.GraceEffectTransition.slide, "내림→slide"
+
+
+_REPEAT_VOLTA_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <barline location="left"><bar-style>heavy-light</bar-style><repeat direction="forward"/></barline>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <barline location="left"><ending number="1" type="start"/></barline>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+      <barline location="right"><bar-style>light-heavy</bar-style><ending number="1" type="stop"/><repeat direction="backward" times="3"/></barline>
+    </measure>
+    <measure number="3">
+      <barline location="left"><ending number="2" type="start"/></barline>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+      <barline location="right"><ending number="2" type="discontinue"/></barline>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_repeat_and_volta_mapped_to_gp5_measure_headers(tmp_path):
+    """반복표 시작/닫힘(횟수)과 1·2번 엔딩이 GP5 마디 헤더에 반영돼야 한다."""
+    xml_path = tmp_path / "repeat_volta.musicxml"
+    xml_path.write_text(_REPEAT_VOLTA_XML, encoding="utf-8")
+    out = str(tmp_path / "repeat_volta.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    measures = song.tracks[0].measures
+
+    assert measures[0].isRepeatOpen is True
+    assert measures[1].repeatClose == 2, "MusicXML times=3 → GP5 repeatClose=2(3-1)"
+    assert measures[1].header.repeatAlternative == 0b01, "1번 엔딩 → bit0"
+    assert measures[2].header.repeatAlternative == 0b10, "2번 엔딩 → bit1"

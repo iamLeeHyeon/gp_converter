@@ -53,7 +53,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
+from music21 import converter, bar as m21bar, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
 
 
 logger = logging.getLogger(__name__)
@@ -162,6 +162,10 @@ class MeasureData:
     denominator: int
     key_fifths: int
     voices: List[List[NoteEvent]] = field(default_factory=lambda: [[]])
+    is_repeat_open: bool = False
+    repeat_close: int = -1
+    repeat_alternative: int = 0
+    chord_name: Optional[str] = None
 
 
 def _midi_to_string_fret(
@@ -409,6 +413,16 @@ def _collect_notes(score) -> List[MeasureData]:
     part = score.parts[0]
     measures = list(part.getElementsByClass(m21stream.Measure))
 
+    repeat_alt_by_measure: Dict[int, int] = {}
+    for rb in score.recurse().getElementsByClass(m21spanner.RepeatBracket):
+        bitmask = 0
+        for n in rb.getNumberList():
+            bitmask |= 1 << (n - 1)
+        for spanned in rb.getSpannedElements():
+            repeat_alt_by_measure[spanned.number] = (
+                repeat_alt_by_measure.get(spanned.number, 0) | bitmask
+            )
+
     result: List[MeasureData] = []
     numerator, denominator, key_fifths = 4, 4, 0
     running_velocity: Optional[int] = None
@@ -420,18 +434,30 @@ def _collect_notes(score) -> List[MeasureData]:
         if m.keySignature is not None:
             key_fifths = m.keySignature.sharps
 
+        is_repeat_open = (
+            isinstance(m.leftBarline, m21bar.Repeat) and m.leftBarline.direction == "start"
+        )
+        repeat_close = -1
+        if isinstance(m.rightBarline, m21bar.Repeat) and m.rightBarline.direction == "end":
+            repeat_close = (m.rightBarline.times or 2) - 1
+        repeat_alternative = repeat_alt_by_measure.get(m.number, 0)
+
         expected_ql = numerator * 4.0 / denominator
         voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
         voices_events = [
             _drop_phantom_leading_rest(_extract_events(vs, initial_velocity=running_velocity), expected_ql)
             for vs in voice_streams
         ]
-        # 이 마디 voices[0]에서 마지막으로 설정된 velocity를 다음 마디로 이어받는다.
         for ev in voices_events[0]:
             if ev.velocity is not None:
                 running_velocity = ev.velocity
 
-        result.append(MeasureData(numerator, denominator, key_fifths, voices_events))
+        result.append(MeasureData(
+            numerator, denominator, key_fifths, voices_events,
+            is_repeat_open=is_repeat_open,
+            repeat_close=repeat_close,
+            repeat_alternative=repeat_alternative,
+        ))
 
     # 곡 전체에서 2번째 보이스가 단 한 마디라도 쓰였다면, 그 보이스를 안 쓰는
     # 다른 마디들도 voices 리스트에 빈 배열로라도 자리를 만들어둔다 — 그래야
@@ -490,6 +516,9 @@ def _build_song(
         mh.timeSignature.denominator.value = md.denominator
         fifths = max(-8, min(8, md.key_fifths))
         mh.keySignature = _FIFTHS_TO_KEYSIG[fifths]
+        mh.isRepeatOpen = md.is_repeat_open
+        mh.repeatClose = md.repeat_close
+        mh.repeatAlternative = md.repeat_alternative
 
     def _fill_voice(
         voice: gpm.Voice, events: List[NoteEvent], use_hints: bool,
