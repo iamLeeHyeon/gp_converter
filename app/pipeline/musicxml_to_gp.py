@@ -158,6 +158,8 @@ class NoteEvent:
     grace: Optional[Tuple[int, str]] = None
     tremolo_picking: Optional[int] = None  # music21 Tremolo.numberOfMarks(1|2|3)
     harmonic: Optional[str] = None  # 'natural' | 'artificial' (music21 Harmonic.harmonicType)
+    bend: bool = False
+    palm_mute: bool = False
 
 
 @dataclass
@@ -305,13 +307,20 @@ def _is_tied(tie) -> bool:
     return tie is not None and tie.type in ("continue", "stop")
 
 
-def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List[NoteEvent]:
+def _extract_events(
+    stream_like,
+    initial_velocity: Optional[int] = None,
+    technicals: Optional[Dict[int, Set[str]]] = None,
+) -> List[NoteEvent]:
     """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다.
 
     initial_velocity: 이전 마디에서 이어지는 velocity 초기값(없으면 None=
     기본값 사용). 마디 간 carry-forward는 _collect_notes에서 처리한다.
+    technicals: raw XML에서 스캔한 (순번 → {'bend','palm_mute'}) 매핑
+    (_scan_raw_technicals 참고). None이면 벤드/팜뮤트 없음으로 처리.
     """
     events: List[NoteEvent] = []
+    ordinal = 0
     vel_map = _build_velocity_map(stream_like)
     sorted_vel_offsets = sorted(vel_map)
     pending_grace: Optional[Tuple[int, str]] = None
@@ -366,6 +375,11 @@ def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List
                     harmonic = art.harmonicType
                     break
 
+        marks = technicals.get(ordinal, set()) if technicals else set()
+        bend = "bend" in marks
+        palm_mute = "palm_mute" in marks
+        ordinal += 1
+
         # 잇단음 감지
         tuplet = None
         if n.duration.tuplets:
@@ -393,7 +407,7 @@ def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List
             grace = (grace_midi, transition)
             pending_grace = None
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute))
     return events
 
 
@@ -493,7 +507,7 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Set[str]]:
     return result
 
 
-def _collect_notes(score) -> List[MeasureData]:
+def _collect_notes(score, xml_path: str) -> List[MeasureData]:
     """첫 번째 파트에서 마디 단위 (박자, 조표, 보이스별 음표/쉼표) 목록을 추출한다.
 
     박자/조표는 명시된 마디가 없으면 이전 마디 값을 이어받는다(carry-forward).
@@ -507,6 +521,7 @@ def _collect_notes(score) -> List[MeasureData]:
     최대 2개까지만 voices에 담는다(3개 이상이면 나머지는 버림).
     """
     part = score.parts[0]
+    raw_technicals = _scan_raw_technicals(xml_path)
     measures = list(part.getElementsByClass(m21stream.Measure))
 
     repeat_alt_by_measure: Dict[int, int] = {}
@@ -544,8 +559,19 @@ def _collect_notes(score) -> List[MeasureData]:
         expected_ql = numerator * 4.0 / denominator
         voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
         voices_events = [
-            _drop_phantom_leading_rest(_extract_events(vs, initial_velocity=running_velocity), expected_ql)
-            for vs in voice_streams
+            _drop_phantom_leading_rest(
+                _extract_events(
+                    vs,
+                    initial_velocity=running_velocity,
+                    technicals={
+                        ordinal: marks
+                        for (mnum, vidx, ordinal), marks in raw_technicals.items()
+                        if mnum == m.number and vidx == voice_index
+                    },
+                ),
+                expected_ql,
+            )
+            for voice_index, vs in enumerate(voice_streams)
         ]
         # 이 마디 voices[0]에서 마지막으로 설정된 velocity를 다음 마디로 이어받는다.
         for ev in voices_events[0]:
@@ -726,6 +752,13 @@ def _build_song(
                 gnote.effect.harmonic = gpm.NaturalHarmonic()
             elif ev.harmonic == "artificial":
                 gnote.effect.harmonic = gpm.ArtificialHarmonic()
+            if ev.bend:
+                gnote.effect.bend = gpm.BendEffect(
+                    type=gpm.BendType.bend,
+                    points=[gpm.BendPoint(0, 0), gpm.BendPoint(12, 2)],
+                )
+            if ev.palm_mute:
+                gnote.effect.palmMute = True
             if ev.grace is not None and len(ev.pitches) == 1:
                 grace_midi, transition_name = ev.grace
                 sf_grace = _midi_to_string_fret(grace_midi, strings)
@@ -831,7 +864,7 @@ def musicxml_to_gp5(
         raise GpConvertError("MusicXML 파싱 실패") from e
 
     try:
-        measures_data = _collect_notes(score)
+        measures_data = _collect_notes(score, xml_path)
     except Exception as e:
         raise GpConvertError("음표 추출 실패") from e
 

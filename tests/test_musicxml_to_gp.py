@@ -1570,3 +1570,40 @@ def test_scan_raw_technicals_finds_bend_and_palm_mute_by_ordinal(tmp_path):
         (1, 0, 0): {"bend"},
         (1, 0, 1): {"palm_mute"},
     }
+
+
+_BEND_PALM_MUTE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><type>half</type>
+        <notations><technical><bend><bend-alter>2</bend-alter></bend></technical></notations>
+      </note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><type>half</type>
+        <notations><technical><palm-mute type="start"/></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_bend_and_palm_mute_mapped_via_raw_xml_correlation(tmp_path):
+    """<bend>/<palm-mute>가 순번 상관관계로 올바른 음표에 매핑돼야 한다."""
+    xml_path = tmp_path / "bend_palm_mute.musicxml"
+    xml_path.write_text(_BEND_PALM_MUTE_XML, encoding="utf-8")
+    out = str(tmp_path / "bend_palm_mute.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 2
+
+    note0 = beats[0].notes[0]
+    note1 = beats[1].notes[0]
+    assert note0.effect.bend is not None and len(note0.effect.bend.points) >= 2
+    assert note0.effect.palmMute is False
+    assert note1.effect.palmMute is True
+    assert note1.effect.bend is None
