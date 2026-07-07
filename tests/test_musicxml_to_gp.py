@@ -1533,3 +1533,40 @@ def test_natural_harmonic_mapped_to_gp5_natural_harmonic(tmp_path):
     song = guitarpro.parse(out)
     note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
     assert isinstance(note.effect.harmonic, guitarpro.models.NaturalHarmonic)
+
+
+def test_scan_raw_technicals_finds_bend_and_palm_mute_by_ordinal(tmp_path):
+    """단일 보이스 안에서 (마디, 보이스, 순번)별로 벤드/팜뮤트를 찾아야 한다.
+
+    쉼표·화음 연속음(<chord/>)·꾸밈음(<grace/>)은 순번에서 제외해야 한다
+    (_extract_events가 이들을 건너뛰거나 따로 처리하는 것과 동일한 순서 유지).
+    """
+    from app.pipeline.musicxml_to_gp import _scan_raw_technicals
+
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <notations><technical><bend><bend-alter>2</bend-alter></bend></technical></notations>
+      </note>
+      <note><rest/><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <notations><technical><palm-mute type="start"/></technical></notations>
+      </note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "raw_technicals.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+
+    result = _scan_raw_technicals(str(xml_path))
+
+    # 순번: C(0)=bend, [쉼표는 순번 안 씀], D(1)=palm_mute, E(2)=없음
+    assert result == {
+        (1, 0, 0): {"bend"},
+        (1, 0, 1): {"palm_mute"},
+    }

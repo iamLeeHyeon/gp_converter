@@ -46,8 +46,9 @@ from __future__ import annotations
 
 import logging
 import os
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import guitarpro
 import guitarpro.models as gpm
@@ -443,6 +444,53 @@ def _collect_lyrics(score) -> Tuple[Optional[int], str]:
                 else:
                     tokens.append(ly.text)
     return starting_measure, " ".join(tokens)
+
+
+def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Set[str]]:
+    """원본 MusicXML을 병행 파싱해 (마디, 보이스, 순번)별 벤드/팜뮤트 표기를 찾는다.
+
+    music21이 <bend>/<palm-mute>를 파싱하지 않아서 raw XML을 직접 훑는다.
+
+    ponytail: 이건 "raw XML과 music21 스트림이 같은 순서로 노트를 센다"는
+    가정에 기댄 best-effort 상관관계다. 화음/보이스가 복잡하게 얽히면
+    어긋날 수 있음 — 실사용 입력(Audiveris 표준보)에 이 태그 자체가 애초에
+    거의 안 나올 걸로 예상해서 감수함. 팜뮤트는 <palm-mute type="start"/">
+    경계 음표에만 표시하고 그 사이 음표까지 전파하지 않는다(추가로 단순화).
+    쉼표·화음 연속음(<chord/>)·꾸밈음(<grace/>)은 순번에서 제외한다
+    (_extract_events가 이들을 건너뛰거나 따로 처리하는 것과 동일하게 유지).
+    """
+    result: Dict[Tuple[int, int, int], Set[str]] = {}
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    for part in root.findall("part"):
+        for measure in part.findall("measure"):
+            measure_number = int(measure.get("number"))
+            voice_order: List[str] = []
+            ordinals: Dict[str, int] = {}
+            for note in measure.findall("note"):
+                if note.find("rest") is not None:
+                    continue
+                if note.find("chord") is not None:
+                    continue
+                if note.find("grace") is not None:
+                    continue
+                voice_text = note.findtext("voice") or "1"
+                if voice_text not in voice_order:
+                    voice_order.append(voice_text)
+                voice_index = voice_order.index(voice_text)
+                ordinal = ordinals.get(voice_text, 0)
+                ordinals[voice_text] = ordinal + 1
+
+                marks: Set[str] = set()
+                technical = note.find("notations/technical")
+                if technical is not None:
+                    if technical.find("bend") is not None:
+                        marks.add("bend")
+                    if technical.find("palm-mute") is not None:
+                        marks.add("palm_mute")
+                if marks:
+                    result[(measure_number, voice_index, ordinal)] = marks
+    return result
 
 
 def _collect_notes(score) -> List[MeasureData]:
