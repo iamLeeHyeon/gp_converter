@@ -1,13 +1,12 @@
 import os
 import tempfile
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import Depends, FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.database import Base, engine, get_db, run_sqlite_migrations
+from app.dependencies import get_optional_user, get_settings, get_store
 from app.jobs import JobStore, JobStatus
 from app.models import User, File as DbFile
 from app.routers.auth import router as auth_router
@@ -50,31 +50,6 @@ app.include_router(share_router)
 app.include_router(billing_router)
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
-
-
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
-
-
-def get_store(settings: Settings = Depends(get_settings)) -> JobStore:
-    return JobStore(settings.jobs_dir)
-
-
-async def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
-    """Authorization 헤더가 없으면 None 반환 (비로그인 허용)."""
-    from app.auth import decode_token
-    import jwt as _jwt
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return None
-    try:
-        payload = decode_token(auth.split(" ", 1)[1])
-        if payload.get("type") != "access":
-            return None
-        return db.query(User).filter(User.id == payload["sub"]).first()
-    except (_jwt.ExpiredSignatureError, _jwt.InvalidTokenError):
-        return None
 
 
 @app.post("/convert")
@@ -146,7 +121,6 @@ async def convert(
     process_job_task.delay(
         settings.jobs_dir, job.id, pdf_path,
         audiveris_cmd=settings.audiveris_cmd,
-        tuxguitar_cmd=settings.tuxguitar_cmd,
         timeout=settings.step_timeout_sec,
         file_id=file_id,
     )

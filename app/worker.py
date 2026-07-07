@@ -6,7 +6,7 @@ from app.storage import get_storage
 
 
 def process_job(store: JobStore, job_id: str, pdf_path: str,
-                audiveris_cmd: str, tuxguitar_cmd: str, timeout: int,
+                audiveris_cmd: str, timeout: int,
                 file_id: Optional[str] = None) -> None:
     job = store.get(job_id)
     if job is None:
@@ -19,7 +19,7 @@ def process_job(store: JobStore, job_id: str, pdf_path: str,
     try:
         gp5_path = run_conversion(
             pdf_path, job.workdir,
-            audiveris_cmd=audiveris_cmd, tuxguitar_cmd=tuxguitar_cmd, timeout=timeout,
+            audiveris_cmd=audiveris_cmd, timeout=timeout,
             progress_callback=_progress,
         )
         store.update(job_id, status=JobStatus.DONE, result_path=gp5_path, progress_pct=100)

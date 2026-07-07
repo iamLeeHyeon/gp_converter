@@ -16,7 +16,7 @@ def test_happy_path(tmp_path):
     with patch("app.pipeline.orchestrator.detect_tab_staves", return_value=[]), \
          patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl") as a, \
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")) as t:
-        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     assert result == str(workdir / "out.gp5")
     a.assert_called_once()
@@ -33,7 +33,7 @@ def test_audiveris_failure_propagates(tmp_path):
          patch("app.pipeline.orchestrator.pdf_to_musicxml", side_effect=AudiverisError("악보 인식 실패")):
         import pytest
         with pytest.raises(AudiverisError):
-            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
 
 def test_gpconvert_failure_propagates(tmp_path):
@@ -47,7 +47,7 @@ def test_gpconvert_failure_propagates(tmp_path):
          patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl"), \
          patch("app.pipeline.orchestrator.musicxml_to_gp5", side_effect=GpConvertError("gp 생성 실패")):
         with pytest.raises(GpConvertError):
-            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
 
 def test_tab_detected_uses_omr_path(tmp_path):
@@ -66,7 +66,7 @@ def test_tab_detected_uses_omr_path(tmp_path):
          patch("app.pipeline.orchestrator.token_texts_to_gp5", return_value=str(workdir / "out.gp5")) as gp_mock, \
          patch("app.pipeline.orchestrator.pdf_to_musicxml") as audiveris_mock:
 
-        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     assert result == str(workdir / "out.gp5")
     omr_mock.assert_called_once()
@@ -89,7 +89,7 @@ def test_tab_omr_failure_propagates(tmp_path):
          patch("app.pipeline.orchestrator.extract_tab_notes", return_value=real_notes), \
          patch("app.pipeline.orchestrator.run_omr_tab", side_effect=OmrTabError("모델 실패")):
         with pytest.raises(OmrTabError):
-            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
 
 def test_no_tab_uses_audiveris_path(tmp_path):
@@ -104,7 +104,7 @@ def test_no_tab_uses_audiveris_path(tmp_path):
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")), \
          patch("app.pipeline.orchestrator.run_omr_tab") as omr_mock:
 
-        run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     audiveris_mock.assert_called_once()
     omr_mock.assert_not_called()
@@ -120,7 +120,7 @@ def test_tab_hints_none_when_no_regions_detected(tmp_path):
     with patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl"), \
          patch("app.pipeline.orchestrator.detect_tab_staves", return_value=[]), \
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")) as gp:
-        run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     _, kwargs = gp.call_args
     assert kwargs["tab_hints"] is None
@@ -136,7 +136,7 @@ def test_tab_reader_exception_falls_back_to_none(tmp_path):
     with patch("app.pipeline.orchestrator.pdf_to_musicxml", return_value="x.mxl"), \
          patch("app.pipeline.orchestrator.detect_tab_staves", side_effect=RuntimeError("pdfminer 파싱 실패")), \
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")) as gp:
-        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     assert result == str(workdir / "out.gp5")
     _, kwargs = gp.call_args
@@ -154,7 +154,7 @@ def test_tab_reader_exception_is_logged(tmp_path, caplog):
          patch("app.pipeline.orchestrator.detect_tab_staves", side_effect=RuntimeError("pdfminer 파싱 실패")), \
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")):
         with caplog.at_level("WARNING", logger="app.pipeline.orchestrator"):
-            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+            run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     assert len(caplog.records) == 1
     assert "pdfminer 파싱 실패" in caplog.records[0].message
@@ -182,7 +182,7 @@ def test_false_positive_tab_region_falls_back_to_audiveris(tmp_path):
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")), \
          patch("app.pipeline.orchestrator.run_omr_tab") as omr_mock:
 
-        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     assert result == str(workdir / "out.gp5")
     audiveris_mock.assert_called_once()
@@ -205,7 +205,7 @@ def test_real_tab_region_with_multiple_strings_still_uses_omr(tmp_path):
          patch("app.pipeline.orchestrator.token_texts_to_gp5", return_value=str(workdir / "out.gp5")), \
          patch("app.pipeline.orchestrator.pdf_to_musicxml") as audiveris_mock:
 
-        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     assert result == str(workdir / "out.gp5")
     omr_mock.assert_called_once()
@@ -228,7 +228,7 @@ def test_extract_tab_notes_exception_falls_back_to_audiveris(tmp_path):
          patch("app.pipeline.orchestrator.musicxml_to_gp5", return_value=str(workdir / "out.gp5")), \
          patch("app.pipeline.orchestrator.run_omr_tab") as omr_mock:
 
-        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        result = run_conversion(str(pdf), str(workdir), audiveris_cmd="a", timeout=10)
 
     assert result == str(workdir / "out.gp5")
     audiveris_mock.assert_called_once()

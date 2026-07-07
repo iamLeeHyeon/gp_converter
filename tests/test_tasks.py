@@ -15,7 +15,7 @@ def test_process_job_task_delegates_with_reconstructed_store(tmp_path):
     with patch("app.tasks.process_job") as mock_process_job:
         process_job_task(
             jobs_dir, job.id, str(pdf),
-            audiveris_cmd="a", tuxguitar_cmd="t", timeout=10, file_id="f1",
+            audiveris_cmd="a", timeout=10, file_id="f1",
         )
 
     mock_process_job.assert_called_once()
@@ -25,7 +25,7 @@ def test_process_job_task_delegates_with_reconstructed_store(tmp_path):
     assert args[1] == job.id
     assert args[2] == str(pdf)
     assert kwargs == {
-        "audiveris_cmd": "a", "tuxguitar_cmd": "t", "timeout": 10, "file_id": "f1",
+        "audiveris_cmd": "a", "timeout": 10, "file_id": "f1",
     }
 
 
@@ -38,7 +38,7 @@ def test_process_job_task_real_success_updates_job_status(tmp_path):
     pdf.write_bytes(b"%PDF dummy")
 
     with patch("app.worker.run_conversion", return_value="/x/output.gp5"):
-        process_job_task(jobs_dir, job.id, str(pdf), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        process_job_task(jobs_dir, job.id, str(pdf), audiveris_cmd="a", timeout=10)
 
     got = store.get(job.id)
     assert got.status == JobStatus.DONE

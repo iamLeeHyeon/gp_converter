@@ -10,6 +10,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User, File
 from app.storage import get_storage
+from app.utils import as_utc
 
 router = APIRouter(prefix="/files", tags=["share"])
 
@@ -77,10 +78,6 @@ def revoke_share_link(
     db.commit()
 
 
-def _as_utc(dt: datetime) -> datetime:
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
 @router.get("/shared/{token}")
 def get_shared_gp5(token: str, db: Session = Depends(get_db)):
     """공유 토큰으로 GP5 파일 조회 — 인증 불필요."""
@@ -88,7 +85,7 @@ def get_shared_gp5(token: str, db: Session = Depends(get_db)):
     if f is None:
         raise HTTPException(status_code=404, detail="유효하지 않은 링크")
     if f.shared_expires_at is not None:
-        if datetime.now(timezone.utc) > _as_utc(f.shared_expires_at):
+        if datetime.now(timezone.utc) > as_utc(f.shared_expires_at):
             raise HTTPException(status_code=404, detail="링크가 만료되었습니다")
     storage = get_storage()
     if not f.gp5_path or not storage.exists(f.gp5_path):

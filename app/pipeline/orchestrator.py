@@ -13,7 +13,6 @@ def run_conversion(
     pdf_path: str,
     workdir: str,
     audiveris_cmd: str,
-    tuxguitar_cmd: str,
     timeout: int,
     progress_callback=None,  # (pct: int, step: str) -> None
 ) -> str:

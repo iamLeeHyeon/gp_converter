@@ -32,7 +32,6 @@ def test_pdf_to_gp5_real(tmp_path):
         FIXTURE,
         str(workdir),
         audiveris_cmd=os.environ.get("GPC_AUDIVERIS_CMD", _DEFAULT_AUDIVERIS_CMD),
-        tuxguitar_cmd="unused",
         timeout=300,
     )
 
@@ -81,7 +80,6 @@ def test_pdf_with_tab_uses_tab_hints_not_heuristic(tmp_path):
         TAB_FIXTURE,
         str(workdir),
         audiveris_cmd=os.environ.get("GPC_AUDIVERIS_CMD", _DEFAULT_AUDIVERIS_CMD),
-        tuxguitar_cmd="unused",
         timeout=300,
     )
 

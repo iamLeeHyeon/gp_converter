@@ -15,7 +15,7 @@ _BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 @celery_app.task(name="gp_converter.process_job")
 def process_job_task(
     jobs_dir: str, job_id: str, pdf_path: str,
-    audiveris_cmd: str, tuxguitar_cmd: str, timeout: int,
+    audiveris_cmd: str, timeout: int,
     file_id: Optional[str] = None,
 ) -> None:
     """Celery task 인자는 JSON 직렬화되므로 JobStore 객체를 직접 못 넘긴다.
@@ -25,7 +25,7 @@ def process_job_task(
     store = JobStore(jobs_dir)
     process_job(
         store, job_id, pdf_path,
-        audiveris_cmd=audiveris_cmd, tuxguitar_cmd=tuxguitar_cmd, timeout=timeout,
+        audiveris_cmd=audiveris_cmd, timeout=timeout,
         file_id=file_id,
     )
 

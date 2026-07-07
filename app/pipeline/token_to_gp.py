@@ -58,6 +58,29 @@ _SLIDE_IN_MAP: dict = {
 }
 
 
+def _pad_voice_with_rests(voice: gpm.Voice, remaining: float) -> None:
+    """마디의 남은 용량을 쉼표 비트로 채운다. voice가 완전히 비면 4분쉼표 하나를 넣는다."""
+    if remaining > 0.01:
+        for dur_val in _DUR_FILL_ORDER:
+            fill_units = _DUR_UNITS[dur_val]
+            while remaining >= fill_units - 0.01:
+                rest = Beat(voice)
+                rest.status = BeatStatus.rest
+                rest.duration = gpm.Duration()
+                rest.duration.value = dur_val
+                rest.notes = []
+                voice.beats.append(rest)
+                remaining -= fill_units
+
+    if not voice.beats:
+        rest = Beat(voice)
+        rest.status = BeatStatus.rest
+        rest.duration = gpm.Duration()
+        rest.duration.value = 4
+        rest.notes = []
+        voice.beats.append(rest)
+
+
 @dataclass
 class _NoteData:
     string: int
@@ -303,26 +326,7 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
             voice.beats.append(beat)
 
         # 남은 공간을 쉼표로 채움 (마디가 비거나 부족한 경우)
-        remaining = expected - accumulated
-        if remaining > 0.01:
-            for dur_val in _DUR_FILL_ORDER:
-                fill_units = _DUR_UNITS[dur_val]
-                while remaining >= fill_units - 0.01:
-                    rest = Beat(voice)
-                    rest.status = BeatStatus.rest
-                    rest.duration = gpm.Duration()
-                    rest.duration.value = dur_val
-                    rest.notes = []
-                    voice.beats.append(rest)
-                    remaining -= fill_units
-
-        if not voice.beats:
-            beat = Beat(voice)
-            beat.status = BeatStatus.rest
-            beat.duration = gpm.Duration()
-            beat.duration.value = 4
-            beat.notes = []
-            voice.beats.append(beat)
+        _pad_voice_with_rests(voice, expected - accumulated)
 
     first_mh = song.measureHeaders[0]
     first_mh.number = 1
@@ -358,8 +362,6 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
     ValueError
         트랙 또는 마디 없는 경우.
     """
-    _DYN_STR_MAP = {"ppp": 15, "pp": 31, "p": 47, "mp": 63,
-                    "mf": 79, "f": 95, "ff": 111, "fff": 127}
     _SLIDE_MAP = {
         "slide-shift": SlideType.shiftSlideTo,
         "slide-legato": SlideType.legatoSlideTo,
@@ -405,7 +407,7 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
                 beat.notes = []
             else:
                 beat.status = BeatStatus.normal
-                vel = _DYN_STR_MAP.get(bdata.get("dynamic", "mf"), 95)
+                vel = _DYN_MAP.get(bdata.get("dynamic", "mf"), 95)
                 for nd in notes_data:
                     gnote = Note(beat)
                     gnote.string = nd.get("string", 1)
@@ -442,26 +444,7 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
 
             voice.beats.append(beat)
 
-        remaining = expected - accumulated
-        if remaining > 0.01:
-            for dv in _DUR_FILL_ORDER:
-                fu = _DUR_UNITS[dv]
-                while remaining >= fu - 0.01:
-                    rest = Beat(voice)
-                    rest.status = BeatStatus.rest
-                    rest.duration = gpm.Duration()
-                    rest.duration.value = dv
-                    rest.notes = []
-                    voice.beats.append(rest)
-                    remaining -= fu
-
-        if not voice.beats:
-            rest = Beat(voice)
-            rest.status = BeatStatus.rest
-            rest.duration = gpm.Duration()
-            rest.duration.value = 4
-            rest.notes = []
-            voice.beats.append(rest)
+        _pad_voice_with_rests(voice, expected - accumulated)
 
     def _fill_snap(measure: gpm.Measure, mdata: dict) -> None:
         ts = mdata.get("timeSignature", {})

@@ -17,6 +17,7 @@ from app.dependencies import get_current_user
 from app.models import User
 from app.rate_limit import rate_limit
 from app.tasks import send_verification_email_task, send_reset_email_task
+from app.utils import as_utc
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -212,10 +213,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     if not user or not user.verification_token_expires_at:
         return RedirectResponse(f"{_FRONTEND}/login?verify=expired")
 
-    expires_at = user.verification_token_expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
+    if as_utc(user.verification_token_expires_at) < datetime.now(timezone.utc):
         return RedirectResponse(f"{_FRONTEND}/login?verify=expired")
 
     user.email_verified = True
@@ -297,10 +295,7 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     if not user or not user.reset_token_expires_at:
         raise HTTPException(status_code=400, detail="유효하지 않거나 만료된 토큰입니다.")
 
-    expires_at = user.reset_token_expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
+    if as_utc(user.reset_token_expires_at) < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="유효하지 않거나 만료된 토큰입니다.")
 
     user.password_hash = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")

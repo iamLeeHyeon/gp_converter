@@ -11,7 +11,7 @@ def test_process_job_success(tmp_path):
     pdf.write_bytes(b"%PDF dummy")
 
     with patch("app.worker.run_conversion", return_value="/x/output.gp5"):
-        process_job(store, job.id, str(pdf), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        process_job(store, job.id, str(pdf), audiveris_cmd="a", timeout=10)
 
     got = store.get(job.id)
     assert got.status == JobStatus.DONE
@@ -25,7 +25,7 @@ def test_process_job_failure(tmp_path):
     pdf.write_bytes(b"%PDF dummy")
 
     with patch("app.worker.run_conversion", side_effect=AudiverisError("악보 인식 실패")):
-        process_job(store, job.id, str(pdf), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        process_job(store, job.id, str(pdf), audiveris_cmd="a", timeout=10)
 
     got = store.get(job.id)
     assert got.status == JobStatus.FAILED
@@ -48,7 +48,7 @@ def test_process_job_success_updates_file_gp5_path(tmp_path):
     pdf.write_bytes(b"%PDF dummy")
 
     with patch("app.worker.run_conversion", return_value="/x/output.gp5"):
-        process_job(store, job.id, str(pdf), audiveris_cmd="a", tuxguitar_cmd="t",
+        process_job(store, job.id, str(pdf), audiveris_cmd="a",
                      timeout=10, file_id="w-f1")
 
     db = SessionLocal()
@@ -73,7 +73,7 @@ def test_process_job_failure_does_not_touch_file(tmp_path):
     pdf.write_bytes(b"%PDF dummy")
 
     with patch("app.worker.run_conversion", side_effect=AudiverisError("실패")):
-        process_job(store, job.id, str(pdf), audiveris_cmd="a", tuxguitar_cmd="t",
+        process_job(store, job.id, str(pdf), audiveris_cmd="a",
                      timeout=10, file_id="w-f2")
 
     db = SessionLocal()
@@ -90,7 +90,7 @@ def test_process_job_without_file_id_still_works(tmp_path):
     pdf.write_bytes(b"%PDF dummy")
 
     with patch("app.worker.run_conversion", return_value="/x/output.gp5"):
-        process_job(store, job.id, str(pdf), audiveris_cmd="a", tuxguitar_cmd="t", timeout=10)
+        process_job(store, job.id, str(pdf), audiveris_cmd="a", timeout=10)
 
     got = store.get(job.id)
     assert got.status == JobStatus.DONE

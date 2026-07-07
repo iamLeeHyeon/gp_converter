@@ -31,7 +31,7 @@ def test_worker_updates_progress(store, tmp_path):
         from app.worker import process_job
         job = store.create()
         process_job(store, job.id, pdf_path,
-                    audiveris_cmd="", tuxguitar_cmd="", timeout=0)
+                    audiveris_cmd="", timeout=0)
 
     final = store.get(job.id)
     assert final.status == JobStatus.DONE
@@ -65,7 +65,7 @@ def test_worker_updates_progress_audiveris(store, tmp_path):
         from app.worker import process_job
         job = store.create()
         process_job(store, job.id, pdf_path,
-                    audiveris_cmd="", tuxguitar_cmd="", timeout=0)
+                    audiveris_cmd="", timeout=0)
 
     final = store.get(job.id)
     assert final.status == JobStatus.DONE

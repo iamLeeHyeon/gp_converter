@@ -52,7 +52,7 @@ def test_sse_unknown_job_returns_failed_event():
 
 def test_sse_done_job_streams_done():
     from app.jobs import JobStore, JobStatus
-    from app.routers.jobs_sse import _get_store
+    from app.dependencies import get_store
     import tempfile
 
     with tempfile.TemporaryDirectory() as d:
@@ -61,7 +61,7 @@ def test_sse_done_job_streams_done():
         store.update(job.id, status=JobStatus.DONE, progress_pct=100)
 
         # SSE 엔드포인트가 같은 store 인스턴스를 바라보도록 override
-        app.dependency_overrides[_get_store] = lambda: store
+        app.dependency_overrides[get_store] = lambda: store
         try:
             with client.stream("GET", f"/jobs/{job.id}/stream") as r:
                 for line in r.iter_lines():
@@ -71,4 +71,4 @@ def test_sse_done_job_streams_done():
                         assert data["pct"] == 100
                         break
         finally:
-            del app.dependency_overrides[_get_store]
+            del app.dependency_overrides[get_store]
