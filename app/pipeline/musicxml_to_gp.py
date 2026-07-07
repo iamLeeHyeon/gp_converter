@@ -433,6 +433,18 @@ def _collect_notes(score) -> List[MeasureData]:
 
         result.append(MeasureData(numerator, denominator, key_fifths, voices_events))
 
+    # 곡 전체에서 2번째 보이스가 단 한 마디라도 쓰였다면, 그 보이스를 안 쓰는
+    # 다른 마디들도 voices 리스트에 빈 배열로라도 자리를 만들어둔다 — 그래야
+    # _fill_measure가 그 마디의 2번째 보이스에도 _fill_voice를 호출해서
+    # "완전히 빈 배열 대신 마디 전체 쉼표 비트"로 채워준다(안 그러면 그 마디는
+    # voices 길이가 1인 채로 남아 2번째 보이스 자체가 구성 안 되고, alphaTab이
+    # 이후 로드 시 "Cannot read properties of undefined (reading 'beats')"로
+    # 죽는다 — 실사례로 재현 확인).
+    if any(len(md.voices) >= 2 for md in result):
+        for md in result:
+            while len(md.voices) < 2:
+                md.voices.append([])
+
     return result
 
 
@@ -479,7 +491,10 @@ def _build_song(
         fifths = max(-8, min(8, md.key_fifths))
         mh.keySignature = _FIFTHS_TO_KEYSIG[fifths]
 
-    def _fill_voice(voice: gpm.Voice, events: List[NoteEvent], use_hints: bool) -> None:
+    def _fill_voice(
+        voice: gpm.Voice, events: List[NoteEvent], use_hints: bool,
+        numerator: int, denominator: int,
+    ) -> None:
         beats: List[Beat] = []
         # 이어지는 음(tie)이 직전 비트와 같은 줄을 유지하도록 추적한다
         # (pitch → 그 음이 현재 놓인 줄 번호). 쉼표를 만나면 비운다.
@@ -590,11 +605,32 @@ def _build_song(
             beat.notes = [gnote]
             beats.append(beat)
             prev_pitch_to_string = {ev.pitches[0]: snum}
+
+        if not beats:
+            # 이 마디에서 이 보이스가 완전히 안 쓰여도(특히 2번째 보이스),
+            # beats를 진짜 빈 배열로 두면 안 된다 — alphaTab이 한 번이라도
+            # 그 보이스가 실제로 쓰인 뒤(다른 마디에서) 빈 배열을 만나면
+            # "Cannot read properties of undefined (reading 'beats')"로
+            # 로드 자체가 죽는다(실사례로 재현 확인, PyGuitarPro/GP5 파일
+            # 자체는 이상 없어서 이 리포의 다른 자동화 테스트로는 못 잡힘).
+            # 마디 전체를 채우는 쉼표 비트 1개로 대신한다.
+            ql = 4.0 * numerator / denominator
+            gp_val, is_dotted = _ql_to_gp_duration(ql)
+            rest_beat = Beat(voice=voice)
+            rest_beat.status = BeatStatus.rest
+            rest_beat.duration.value = gp_val
+            rest_beat.duration.isDotted = is_dotted
+            rest_beat.notes = []
+            beats = [rest_beat]
+
         voice.beats = beats
 
     def _fill_measure(measure: gpm.Measure, md: MeasureData) -> None:
         for vi, events in enumerate(md.voices):
-            _fill_voice(measure.voices[vi], events, use_hints=(vi == 0))
+            _fill_voice(
+                measure.voices[vi], events, use_hints=(vi == 0),
+                numerator=md.numerator, denominator=md.denominator,
+            )
 
     first_mh = song.measureHeaders[0]
     first_measure = track.measures[0]

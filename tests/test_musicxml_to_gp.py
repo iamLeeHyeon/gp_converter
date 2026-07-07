@@ -602,6 +602,57 @@ def test_second_voice_preserved_as_separate_gp5_voice(tmp_path):
     assert voice1_midi == [55], f"voice2(동시에 울리는 음)가 빠짐: {voice1_midi}"
 
 
+_MULTI_VOICE_THEN_SINGLE_VOICE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>2</voice><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_second_voice_gets_full_rest_when_unused_in_later_measure(tmp_path):
+    """마디1에서 실제로 쓰인 2번째 보이스가 마디2에서 안 쓰이면, 완전히 빈 배열이
+    아니라 그 마디를 채우는 쉼표 비트 1개가 들어가야 한다.
+
+    실사례로 재현된 버그: 이렇게 완전히 빈 voices[1].beats == []가 "한 번이라도
+    그 보이스가 쓰인 뒤" 나오면 alphaTab이 로드 시
+    "Cannot read properties of undefined (reading 'beats')"로 죽는다(자체 검증
+    완료). PyGuitarPro/GP5 파일 자체는 문제 없이 파싱되므로 이 버그는 자동화
+    테스트로 못 잡고 실제 alphaTab 로딩에서만 드러난다 — 그래서 "완전히 빈 보이스
+    없음"을 우리 쪽에서 직접 보장해야 한다.
+    """
+    xml_path = tmp_path / "multivoice_then_single.musicxml"
+    xml_path.write_text(_MULTI_VOICE_THEN_SINGLE_VOICE_XML, encoding="utf-8")
+    out = str(tmp_path / "multivoice_then_single.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    measure2 = song.tracks[0].measures[1]
+
+    assert len(measure2.voices[1].beats) >= 1, "2번째 보이스가 완전히 빈 배열로 남음"
+    beat = measure2.voices[1].beats[0]
+    assert beat.status == guitarpro.BeatStatus.rest
+    assert beat.notes == []
+
+
 _DOTTED_DURATIONS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>
