@@ -1478,3 +1478,31 @@ def test_lyrics_extraction_failure_does_not_fail_entire_conversion(tmp_path):
     # 파일 자체는 유효한 GP5여야 한다
     song = guitarpro.parse(out)
     assert len(song.tracks) > 0
+
+
+_TREMOLO_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><ornaments><tremolo type="single">2</tremolo></ornaments></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_tremolo_picking_mapped_to_sixteenth_duration(tmp_path):
+    """트레몰로 표기(2슬래시)가 GP5 tremoloPicking(16분음표 속도)로 매핑돼야 한다."""
+    xml_path = tmp_path / "tremolo.musicxml"
+    xml_path.write_text(_TREMOLO_XML, encoding="utf-8")
+    out = str(tmp_path / "tremolo.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.tremoloPicking is not None
+    assert note.effect.tremoloPicking.duration.value == guitarpro.models.Duration.sixteenth

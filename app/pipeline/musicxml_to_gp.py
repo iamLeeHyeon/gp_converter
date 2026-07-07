@@ -53,7 +53,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, bar as m21bar, harmony as m21harmony, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
+from music21 import converter, bar as m21bar, harmony as m21harmony, expressions as m21expr, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
 
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,13 @@ _ARTICULATION_MAP: Dict[type, str] = {
     m21art.Accent:       'accent',
     m21art.StrongAccent: 'strong-accent',
     m21art.Tenuto:       'tenuto',
+}
+
+# music21 Tremolo.numberOfMarks(슬래시 개수) → GP5 Duration.value(트레몰로 속도)
+_TREMOLO_MARKS_TO_GPV: Dict[int, int] = {
+    1: gpm.Duration.eighth,
+    2: gpm.Duration.sixteenth,
+    3: gpm.Duration.thirtySecond,
 }
 
 # 클래식/핑거스타일 기타 표준악보(탭 아님) 표기 관행: 작은 "8" 표기 유무와
@@ -148,6 +155,7 @@ class NoteEvent:
     hammer: bool = False
     articulations: List[str] = field(default_factory=list)
     grace: Optional[Tuple[int, str]] = None
+    tremolo_picking: Optional[int] = None  # music21 Tremolo.numberOfMarks(1|2|3)
 
 
 @dataclass
@@ -342,6 +350,13 @@ def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List
             tied = [_is_tied(n.tie)]
         pitches = [m + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET for m in midis]
 
+        tremolo_picking = None
+        if not isinstance(n, m21chord.Chord):
+            for expr in n.expressions:
+                if isinstance(expr, m21expr.Tremolo):
+                    tremolo_picking = expr.numberOfMarks
+                    break
+
         # 잇단음 감지
         tuplet = None
         if n.duration.tuplets:
@@ -369,7 +384,7 @@ def _extract_events(stream_like, initial_velocity: Optional[int] = None) -> List
             grace = (grace_midi, transition)
             pending_grace = None
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking))
     return events
 
 
@@ -648,6 +663,9 @@ def _build_song(
             if ev.velocity is not None:
                 gnote.velocity = ev.velocity
             _apply_articulations(gnote, ev.articulations)
+            if ev.tremolo_picking is not None:
+                trem_value = _TREMOLO_MARKS_TO_GPV.get(ev.tremolo_picking, gpm.Duration.eighth)
+                gnote.effect.tremoloPicking = gpm.TremoloPickingEffect(duration=gpm.Duration(value=trem_value))
             if ev.grace is not None and len(ev.pitches) == 1:
                 grace_midi, transition_name = ev.grace
                 sf_grace = _midi_to_string_fret(grace_midi, strings)
