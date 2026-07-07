@@ -30,6 +30,18 @@ describe('api.upload', () => {
   })
 })
 
+describe('api.deleteFile', () => {
+  it('204 No Content(빈 바디) 응답이어도 에러 없이 완료돼야 한다', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      json: async () => { throw new SyntaxError('Unexpected end of JSON input') },
+    })
+    const { api } = await import('../lib/api')
+    await expect(api.deleteFile('file-1')).resolves.not.toThrow()
+  })
+})
+
 describe('api.listFiles', () => {
   it('GET /files 반환값 파싱', async () => {
     mockFetch.mockResolvedValueOnce({
