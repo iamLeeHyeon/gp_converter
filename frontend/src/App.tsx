@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { useEditorStore } from './store/editorStore'
+import { useFileStore } from './store/fileStore'
 import LoginPage from './components/Auth/LoginPage'
 import RegisterPage from './components/Auth/RegisterPage'
 import ForgotPasswordPage from './components/Auth/ForgotPasswordPage'
@@ -22,6 +23,7 @@ function MainPage() {
   const [gp5Buffer, setGp5Buffer] = useState<ArrayBuffer | null>(null)
   const { token, emailVerified, logout, fetchMe, refreshAccessToken } = useAuthStore()
   const { setFileId, clearHistory } = useEditorStore()
+  const { load: loadFiles } = useFileStore()
 
   useEffect(() => {
     if (token) fetchMe()
@@ -37,6 +39,7 @@ function MainPage() {
     clearHistory()
     setGp5Buffer(buf)
     setFileId(fileId ?? null)
+    if (fileId) loadFiles()
   }
 
   const handleFileSelect = (buf: ArrayBuffer, fileId: string) => {
