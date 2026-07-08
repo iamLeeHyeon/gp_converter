@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# @coderline/alphatab-vite 플러그인이 매 빌드/dev 서버 시작 시 자동 복사함
+public/font
+public/soundfont
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
