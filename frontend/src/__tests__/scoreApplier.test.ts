@@ -5,16 +5,28 @@ function makeNote(overrides: Record<string, unknown> = {}) {
   return { string: 1, fret: 5, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0, ...overrides }
 }
 
+// alphaTab의 Note.findHammerPullDestination/nextNoteOnSameLine은 note.beat.nextBeat를
+// 타고 다음 박자에서 같은 줄의 노트를 찾는다 — 이 최소 체인을 갖춰야 hammer-on/
+// legato 슬라이드가 목적지를 실제로 찾아내는지 검증할 수 있다.
 function makeBeat(overrides: Record<string, unknown> = {}) {
-  return {
+  const notes = (overrides.notes as Record<string, unknown>[] | undefined) ?? [makeNote()]
+  const beat: Record<string, unknown> = {
     duration: 4, dots: 0,
     isRest: false, dynamics: 4, pickStroke: 0,
-    notes: [makeNote()],
+    notes,
+    nextBeat: null,
+    voice: { bar: { index: 0 } },
+    getNoteOnString: (str: number) => notes.find((n) => n.string === str) ?? null,
     ...overrides,
   }
+  notes.forEach((n) => { n.beat = beat })
+  return beat
 }
 
 function makeScore(beats = [makeBeat()]) {
+  for (let i = 0; i < beats.length - 1; i++) {
+    (beats[i] as Record<string, unknown>).nextBeat = beats[i + 1]
+  }
   return {
     tracks: [{
       staves: [{
@@ -51,11 +63,24 @@ describe('applyEdit', () => {
     expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].dots).toBe(1)
   })
 
-  it('hammer-on 이펙트를 적용한다', async () => {
+  it('hammer-on 이펙트를 적용하면 다음 박자의 같은 줄 음표를 목적지로 찾아 슬러를 그린다', async () => {
+    const { applyEdit } = await import('../lib/scoreApplier')
+    const originNote = makeNote({ string: 1, fret: 5 })
+    const destNote = makeNote({ string: 1, fret: 7 })
+    const score = makeScore([makeBeat({ notes: [originNote] }), makeBeat({ notes: [destNote] })])
+
+    applyEdit(score, POS, { type: 'effect', value: 'hammer-on' })
+
+    expect(originNote.isHammerPullOrigin).toBe(true)
+    expect(originNote.hammerPullDestination).toBe(destNote)
+    expect(originNote.hasEffectSlur).toBe(true)
+  })
+
+  it('hammer-on 목적지를 찾을 수 없으면(다음 박자 없음) isHammerPullOrigin을 다시 끈다', async () => {
     const { applyEdit } = await import('../lib/scoreApplier')
     const score = makeScore()
     applyEdit(score, POS, { type: 'effect', value: 'hammer-on' })
-    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].isHammerPullOrigin).toBe(true)
+    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].isHammerPullOrigin).toBe(false)
   })
 
   it('이펙트를 null로 초기화한다', async () => {
