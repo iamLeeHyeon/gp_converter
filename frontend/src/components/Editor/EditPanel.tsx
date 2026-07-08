@@ -110,9 +110,10 @@ export default function EditPanel({ selectedPosition, currentBeat, currentNote, 
         </div>
       </section>
 
-      {/* 음표 추가 */}
+      {/* 음표 추가 (화음): 이미 있는 음에 다른 줄(string) 음을 겹쳐 쌓는다.
+          오선보/탭보의 빈 자리를 클릭해서 박자를 선택한 뒤에도 쓸 수 있다. */}
       <section>
-        <button onClick={() => onEditBeat({ type: 'addNote' })} className="btn-ghost">+ 음표 추가</button>
+        <button onClick={() => onEditBeat({ type: 'addNote' })} className="btn-primary" style={{ width: '100%' }}>+ 화음 음 추가</button>
       </section>
 
       {/* 음표 편집 (음표가 선택된 경우) */}

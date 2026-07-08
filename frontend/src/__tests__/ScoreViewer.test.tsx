@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { vi, beforeEach } from 'vitest'
 import { initAlphaTab } from '../lib/alphatab'
 import { useEditorStore } from '../store/editorStore'
@@ -140,4 +140,53 @@ test('scoreLoaded에서 초기 스냅샷 생성이 실패해도 예외가 새어
   expect(consoleErrorSpy).toHaveBeenCalled()
 
   consoleErrorSpy.mockRestore()
+})
+
+test('음표 선택 후 ArrowUp/ArrowDown으로 프렛 입력창 없이 화면에서 바로 음을 옮긴다', () => {
+  const note = { string: 1, fret: 5 }
+  const beat = { notes: [note] }
+  const score = { tracks: [{ staves: [{ bars: [{ voices: [{ beats: [beat] }] }] }] }] }
+  const selected = { trackIndex: 0, measureIndex: 0, voiceIndex: 0, beatIndex: 0, noteIndex: 0 }
+  vi.mocked(useEditorStore).mockReturnValue({
+    selected, fileId: null, present: null, saveStatus: 'idle',
+    setSelected: vi.fn(), pushSnapshot: vi.fn(), undo: vi.fn(), redo: vi.fn(), clearHistory: vi.fn(),
+  } as any)
+  vi.mocked(useEditorStore.getState).mockReturnValue({ present: null, selected } as any)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+
+  render(<ScoreViewer gp5Buffer={new ArrayBuffer(8)} />)
+  const mockApi = vi.mocked(initAlphaTab).mock.results[0].value
+  mockApi.score = score
+
+  fireEvent.keyDown(window, { key: 'ArrowUp' })
+  expect(note.fret).toBe(6)
+
+  fireEvent.keyDown(window, { key: 'ArrowDown' })
+  fireEvent.keyDown(window, { key: 'ArrowDown' })
+  expect(note.fret).toBe(4)
+
+  expect(mockApi.render).toHaveBeenCalled()
+  vi.mocked(console.error).mockRestore()
+})
+
+test('ArrowUp/ArrowDown은 프렛 0~24 범위를 벗어나지 않는다', () => {
+  const note = { string: 1, fret: 0 }
+  const beat = { notes: [note] }
+  const score = { tracks: [{ staves: [{ bars: [{ voices: [{ beats: [beat] }] }] }] }] }
+  const selected = { trackIndex: 0, measureIndex: 0, voiceIndex: 0, beatIndex: 0, noteIndex: 0 }
+  vi.mocked(useEditorStore).mockReturnValue({
+    selected, fileId: null, present: null, saveStatus: 'idle',
+    setSelected: vi.fn(), pushSnapshot: vi.fn(), undo: vi.fn(), redo: vi.fn(), clearHistory: vi.fn(),
+  } as any)
+  vi.mocked(useEditorStore.getState).mockReturnValue({ present: null, selected } as any)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+
+  render(<ScoreViewer gp5Buffer={new ArrayBuffer(8)} />)
+  const mockApi = vi.mocked(initAlphaTab).mock.results[0].value
+  mockApi.score = score
+
+  fireEvent.keyDown(window, { key: 'ArrowDown' })
+  expect(note.fret).toBe(0)
+
+  vi.mocked(console.error).mockRestore()
 })

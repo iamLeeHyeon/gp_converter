@@ -17,6 +17,17 @@ function makeBeat(overrides: Record<string, unknown> = {}) {
     nextBeat: null,
     voice: { bar: { index: 0 } },
     getNoteOnString: (str: number) => notes.find((n) => n.string === str) ?? null,
+    // 실제 alphaTab의 Beat.addNote/removeNote와 동일하게 note.beat/note.index
+    // 백링크를 채운다 — applyEdit이 이 메서드에 위임하므로 mock도 맞춰야 한다.
+    addNote(note: Record<string, unknown>) {
+      note.beat = beat
+      note.index = notes.length
+      notes.push(note)
+    },
+    removeNote(note: Record<string, unknown>) {
+      const i = notes.indexOf(note)
+      if (i >= 0) notes.splice(i, 1)
+    },
     ...overrides,
   }
   notes.forEach((n) => { n.beat = beat })
@@ -106,14 +117,22 @@ describe('applyEdit', () => {
     expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].pickStroke).toBe(2)
   })
 
-  it('음표를 추가한다 (string=1, fret=0)', async () => {
+  it('노트가 없는 박자(rest)에 처음 음표를 추가하면 string=1을 쓴다', async () => {
     const { applyEdit } = await import('../lib/scoreApplier')
-    const score = makeScore()
+    const score = makeScore([makeBeat({ notes: [] })])
+    applyEdit(score, { ...POS, noteIndex: null }, { type: 'addNote' })
+    const beat = score.tracks[0].staves[0].bars[0].voices[0].beats[0]
+    expect(beat.notes).toMatchObject([{ string: 1, fret: 0 }])
+  })
+
+  it('음표를 추가하면 화음이 되도록 이미 쓰인 줄(string)은 피해서 추가한다', async () => {
+    const { applyEdit } = await import('../lib/scoreApplier')
+    const score = makeScore() // 기본 노트: string=1
     const before = score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes.length
     applyEdit(score, { ...POS, noteIndex: null }, { type: 'addNote' })
-    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes.length).toBe(before + 1)
-    const added = score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes.at(-1)!
-    expect(added).toMatchObject({ string: 1, fret: 0 })
+    const beat = score.tracks[0].staves[0].bars[0].voices[0].beats[0]
+    expect(beat.notes.length).toBe(before + 1)
+    expect(beat.notes.at(-1)).toMatchObject({ string: 2, fret: 0 })
   })
 
   it('음표를 삭제한다', async () => {

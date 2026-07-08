@@ -154,17 +154,33 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         })
         note = hit?.note ?? null
       }
-      if (!note) return
 
+      if (note) {
+        const pos: NotePosition = {
+          trackIndex: 0,
+          measureIndex: note.beat.voice.bar.index as number,
+          voiceIndex: note.beat.voice.index as number,
+          beatIndex: note.beat.index as number,
+          noteIndex: note.index as number,
+        }
+        setSelected(pos)
+        updateSelectionRectFromNote(note)
+        return
+      }
+
+      // 음표가 없는 빈 자리(쉼표 마디, 마디 내 여백) 클릭 — alphaTab은 클릭
+      // 좌표를 특정 기타 줄(string)로 변환하는 공개 API가 없어서 "어느 줄에
+      // 음을 넣을지"까지는 못 정한다. 대신 그 박자 자체를 선택 상태로 만들어
+      // 사이드바의 "+ 음표 추가" 버튼으로 화음을 쌓을 수 있게 한다.
       const pos: NotePosition = {
         trackIndex: 0,
-        measureIndex: note.beat.voice.bar.index as number,
-        voiceIndex: note.beat.voice.index as number,
-        beatIndex: note.beat.index as number,
-        noteIndex: note.index as number,
+        measureIndex: beat.voice.bar.index as number,
+        voiceIndex: beat.voice.index as number,
+        beatIndex: beat.index as number,
+        noteIndex: null,
       }
       setSelected(pos)
-      updateSelectionRectFromNote(note)
+      setSelectionRect(null)
     }
     containerRef.current.addEventListener('mousedown', handleMouseDown)
 
@@ -187,6 +203,10 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   // 키보드 단축키
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // 입력창(프렛 숫자칸 등)에 포커스가 있을 땐 그쪽 기본 동작(네이티브 숫자
+      // 스피너, 텍스트 편집)에 맡기고 전역 단축키는 건너뛴다
+      const target = e.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       const mod = e.metaKey || e.ctrlKey
       if (mod && !e.shiftKey && e.key === 'z') {
         e.preventDefault()
@@ -198,6 +218,17 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         if (next) syncAndReload(next)
       } else if (e.key === 'Delete' && selected) {
         commitEdit({ type: 'deleteNote' })
+      } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && selected && selected.noteIndex !== null) {
+        // 프렛 입력창 없이 화면에서 바로 음을 위아래로 옮긴다 — fret이 높을수록
+        // 음이 높고(오선 위쪽) 낮을수록 음이 낮으므로(오선 아래쪽) ↑=fret+1, ↓=fret-1
+        e.preventDefault()
+        const score = apiRef.current?.score as any
+        const note = score?.tracks[selected.trackIndex]?.staves[0]?.bars[selected.measureIndex]
+          ?.voices[selected.voiceIndex]?.beats[selected.beatIndex]?.notes[selected.noteIndex]
+        if (!note) return
+        const delta = e.key === 'ArrowUp' ? 1 : -1
+        const next = Math.min(24, Math.max(0, (note.fret as number) + delta))
+        commitEdit({ type: 'fret', value: next })
       }
     }
     window.addEventListener('keydown', handler)

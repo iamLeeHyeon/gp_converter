@@ -101,10 +101,21 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
   } else if (edit.type === 'strumDown') {
     beat.pickStroke = edit.value === true ? 2 : edit.value === false ? 1 : 0
   } else if (edit.type === 'addNote') {
-    beat.notes.push({ string: 1, fret: 0, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0 })
+    // 화음: 항상 string 1에만 추가하면 이미 그 줄에 노트가 있을 때 겹쳐버린다.
+    // 아직 안 쓰인 줄 중 가장 낮은 번호(1=제일 아래 줄)를 골라 추가한다.
+    const stringCount = (score.tracks[pos.trackIndex].staves[0]?.tuning?.length as number) ?? 6
+    const usedStrings = new Set(beat.notes.map((n: any) => n.string))
+    let newString = 1
+    for (let s = 1; s <= stringCount; s++) {
+      if (!usedStrings.has(s)) { newString = s; break }
+    }
+    // beat.notes.push(...)로 직접 밀어넣으면 alphaTab이 렌더링/재생 시 필요로
+    // 하는 note.beat/note.index/noteStringLookup 백링크가 안 채워져 렌더러가
+    // "Cannot read properties of undefined (reading 'voice')" 예외를 던진다
+    // (실사용 중 재현된 버그) — 공개 메서드 Beat.addNote로 위임한다.
+    beat.addNote({ string: newString, fret: 0, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0 })
   } else if (edit.type === 'deleteNote' && pos.noteIndex !== null) {
-    beat.notes.splice(pos.noteIndex, 1)
-    // beat.isRest는 getter 전용 — notes가 비면 alphaTab이 자동으로 true 반환
+    beat.removeNote(beat.notes[pos.noteIndex])
   } else if (edit.type === 'fret' && pos.noteIndex !== null) {
     beat.notes[pos.noteIndex].fret = edit.value
   } else if (edit.type === 'effect') {
