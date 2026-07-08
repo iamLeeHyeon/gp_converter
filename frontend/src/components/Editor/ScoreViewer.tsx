@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { initAlphaTab } from '../../lib/alphatab'
 import type * as alphaTab from '@coderline/alphatab'
 import { useEditorStore } from '../../store/editorStore'
@@ -20,7 +20,6 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null)
   const [playing, setPlaying] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [leftTab, setLeftTab] = useState<'files' | 'tracks'>('files')
 
   const { selected, fileId, present, saveStatus, setSelected, pushSnapshot, undo, redo } = useEditorStore()
   const storeGp5Buffer = useEditorStore(s => s.gp5Buffer)
@@ -72,7 +71,16 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
     const api = initAlphaTab(containerRef.current)
     apiRef.current = api
 
-    api.scoreLoaded.on(() => setLoaded(true))
+    api.scoreLoaded.on((score: any) => {
+      setLoaded(true)
+      // 최초 로드 시엔 present가 비어있어서(편집해야만 채워지던 문제) 트랙/구조
+      // 패널이 항상 빈 화면으로 보였다 — 로드 직후 한 번만 채운다. present가
+      // 이미 있으면(구조편집→재로드 케이스) 편집 액션이 이미 pushSnapshot을
+      // 호출했으므로 여기서 또 넣으면 undo 히스토리가 중복된다.
+      if (score && useEditorStore.getState().present === null) {
+        pushSnapshot(serializeScore(score))
+      }
+    })
     api.playerStateChanged.on((e: any) => setPlaying(e.state === 1))
     api.noteMouseDown.on((note: any) => {
       const pos: NotePosition = {
@@ -128,31 +136,12 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   // 렌더링되는 다른 분기(조건부 early return)로 빠져서 containerRef.current가
   // 그 시점에 계속 null이었다 — 이후 gp5Buffer가 생겨도 effect가 재실행되지
   // 않아 alphaTab이 영영 초기화되지 않는 버그가 있었다(실제 앱에서 재현 확인).
-  const tabButtonStyle = (active: boolean): CSSProperties => ({
-    flex: 1,
-    padding: '10px 0',
-    background: 'none',
-    border: 'none',
-    borderBottom: active ? '2px solid var(--color-primary)' : '2px solid transparent',
-    color: active ? 'var(--color-primary)' : 'var(--color-muted)',
-    fontWeight: active ? 700 : 500,
-    fontSize: 13,
-    cursor: 'pointer',
-  })
-
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--color-bg)' }}>
-      {/* 좌측 탭 패널: 파일 | 트랙 */}
+      {/* 좌측 패널: 트랙 */}
       {gp5Buffer && (
         <aside style={{ width: 200, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', overflow: 'auto', flexShrink: 0 }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
-            <button style={tabButtonStyle(leftTab === 'files')} onClick={() => setLeftTab('files')}>파일</button>
-            <button style={tabButtonStyle(leftTab === 'tracks')} onClick={() => setLeftTab('tracks')}>트랙</button>
-          </div>
-          {leftTab === 'files'
-            ? <div style={{ padding: 12, fontSize: 12, color: 'var(--color-muted)' }}>파일 목록은 왼쪽 사이드바를 이용하세요</div>
-            : <TrackPanel />
-          }
+          <TrackPanel />
         </aside>
       )}
 

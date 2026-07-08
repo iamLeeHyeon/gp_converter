@@ -5,6 +5,10 @@ export function initAlphaTab(element: HTMLElement): alphaTab.AlphaTabApi {
   settings.core.engine = 'html5'
   settings.core.fontDirectory =
     'https://cdn.jsdelivr.net/npm/@coderline/alphatab@latest/dist/font/'
+  // 기본값 false — 이게 없으면 noteMouseDown/beatMouseDown이 절대 안 뜬다
+  // (alphaTab이 노트별 히트박스 자체를 계산 안 해서 클릭해도 편집 패널이
+  // 항상 "음표를 클릭하면 편집할 수 있습니다" 상태로 남아있던 원인이었다).
+  settings.core.includeNoteBounds = true
   // `enablePlayer`는 deprecated 설정이라 이 버전(1.8.3)에서는 실제로 플레이어를
   // 켜지 않는다(내부적으로 playerMode가 계속 Disabled로 남음) — 재생 버튼을
   // 눌러도 콜백은 정상 실행되는데 조용히 아무 일도 안 일어나던 원인이었다.
