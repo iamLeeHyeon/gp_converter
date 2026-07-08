@@ -88,6 +88,22 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
     setSelectionRect(null)
   }, [])
 
+  // 음표 없는 박자(쉼표, 빈 자리)를 선택했을 때도 "선택됐다"는 시각 피드백이
+  // 있어야 한다 — noteHeadBounds가 없으니 그 박자의 눈에 보이는 요소(쉼표
+  // 기호 등) 전체를 감싸는 visualBounds를 대신 쓴다.
+  const updateSelectionRectFromBeat = useCallback((beat: any) => {
+    try {
+      const lookup = (apiRef.current as any)?.renderer?.boundsLookup
+      const beatBounds = lookup?.findBeat(beat)
+      if (beatBounds?.visualBounds) {
+        const b = beatBounds.visualBounds
+        setSelectionRect({ x: b.x, y: b.y, w: b.w, h: b.h })
+        return
+      }
+    } catch { /* bounds 조회 실패 시 아래에서 선택 표시 제거 */ }
+    setSelectionRect(null)
+  }, [])
+
   // alphaTab 초기화
   useEffect(() => {
     if (!containerRef.current) return
@@ -125,6 +141,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
           ?.voices[sel.voiceIndex]?.beats[sel.beatIndex]
         const note = sel.noteIndex !== null ? beat?.notes[sel.noteIndex] : null
         if (note) updateSelectionRectFromNote(note)
+        else if (beat) updateSelectionRectFromBeat(beat)
         else setSelectionRect(null)
       } catch { setSelectionRect(null) }
     })
@@ -180,7 +197,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         noteIndex: null,
       }
       setSelected(pos)
-      setSelectionRect(null)
+      updateSelectionRectFromBeat(beat)
     }
     containerRef.current.addEventListener('mousedown', handleMouseDown)
 
@@ -189,7 +206,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       api.destroy()
       apiRef.current = null
     }
-  }, [setSelected, updateSelectionRectFromNote])
+  }, [setSelected, updateSelectionRectFromNote, updateSelectionRectFromBeat])
 
   // GP5 로드
   useEffect(() => {
