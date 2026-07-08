@@ -43,12 +43,6 @@ export default function LoginPage() {
         >
           Google로 로그인
         </button>
-        <button
-          onClick={() => { window.location.href = '/auth/github' }}
-          style={{ padding: '12px 24px', fontSize: 16, cursor: 'pointer' }}
-        >
-          GitHub로 로그인
-        </button>
       </div>
 
       <div style={{ marginTop: 32, display: 'flex', flexDirection: 'column', gap: 8, width: 280 }}>

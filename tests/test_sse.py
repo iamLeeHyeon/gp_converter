@@ -5,8 +5,6 @@ import json
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-32chars-minimum!!")
 os.environ.setdefault("GOOGLE_CLIENT_ID", "g-id")
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "g-secret")
-os.environ.setdefault("GITHUB_CLIENT_ID", "gh-id")
-os.environ.setdefault("GITHUB_CLIENT_SECRET", "gh-secret")
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
