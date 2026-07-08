@@ -114,17 +114,6 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       }
     })
     api.playerStateChanged.on((e: any) => setPlaying(e.state === 1))
-    api.noteMouseDown.on((note: any) => {
-      const pos: NotePosition = {
-        trackIndex: 0,
-        measureIndex: note.beat.voice.bar.index as number,
-        voiceIndex: note.beat.voice.index as number,
-        beatIndex: note.beat.index as number,
-        noteIndex: note.index as number,
-      }
-      setSelected(pos)
-      updateSelectionRectFromNote(note)
-    })
     // 편집으로 인한 재렌더 후에도 선택 표시 위치를 다시 계산한다(레이아웃이
     // 바뀌어 음표 위치가 이동할 수 있으므로) — 선택이 없으면 표시를 지운다.
     api.postRenderFinished.on(() => {
@@ -140,7 +129,50 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       } catch { setSelectionRect(null) }
     })
 
-    return () => { api.destroy(); apiRef.current = null }
+    // alphaTab의 기본 noteMouseDown은 noteHeadBounds 사각형에 정확히 들어와야만
+    // 인식한다(패딩 없음, alphaTab 내부 고정 로직이라 설정으로 못 바꿈). 음표
+    // 클릭이 너무 빡빡하다는 피드백이 있어 직접 컨테이너에 클릭 리스너를 달아
+    // 노트헤드 주변을 살짝 넓힌 사각형으로도 히트되게 한다.
+    const HIT_PAD = 6
+    const handleMouseDown = (e: MouseEvent) => {
+      const container = containerRef.current
+      const lookup = (apiRef.current as any)?.renderer?.boundsLookup
+      if (!container || !lookup) return
+      const rect = container.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+
+      const beat = lookup.getBeatAtPos(x, y)
+      if (!beat) return
+      let note = lookup.getNoteAtPos(beat, x, y)
+      if (!note) {
+        const beatBounds = lookup.findBeat(beat)
+        const hit = beatBounds?.notes?.find((nb: any) => {
+          const b = nb.noteHeadBounds
+          return x >= b.x - HIT_PAD && x <= b.x + b.w + HIT_PAD
+            && y >= b.y - HIT_PAD && y <= b.y + b.h + HIT_PAD
+        })
+        note = hit?.note ?? null
+      }
+      if (!note) return
+
+      const pos: NotePosition = {
+        trackIndex: 0,
+        measureIndex: note.beat.voice.bar.index as number,
+        voiceIndex: note.beat.voice.index as number,
+        beatIndex: note.beat.index as number,
+        noteIndex: note.index as number,
+      }
+      setSelected(pos)
+      updateSelectionRectFromNote(note)
+    }
+    containerRef.current.addEventListener('mousedown', handleMouseDown)
+
+    return () => {
+      containerRef.current?.removeEventListener('mousedown', handleMouseDown)
+      api.destroy()
+      apiRef.current = null
+    }
   }, [setSelected, updateSelectionRectFromNote])
 
   // GP5 로드
