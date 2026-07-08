@@ -118,3 +118,25 @@ test('present가 이미 있으면(구조편집 후 재로드) scoreLoaded에서 
 
   expect(pushSnapshot).not.toHaveBeenCalled()
 })
+
+test('scoreLoaded에서 초기 스냅샷 생성이 실패해도 예외가 새어나가면 안 된다(실제 렌더링이 멈추던 버그)', () => {
+  const pushSnapshot = vi.fn()
+  vi.mocked(useEditorStore).mockReturnValue({
+    selected: null, fileId: null, present: null, saveStatus: 'idle',
+    setSelected: vi.fn(), pushSnapshot, undo: vi.fn(), redo: vi.fn(), clearHistory: vi.fn(),
+  } as any)
+  vi.mocked(useEditorStore.getState).mockReturnValue({ present: null } as any)
+  const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+  render(<ScoreViewer gp5Buffer={new ArrayBuffer(8)} />)
+  const mockApi = vi.mocked(initAlphaTab).mock.results[0].value
+  const onCalls = mockApi.scoreLoaded.on.mock.calls
+  const scoreLoadedCallback = onCalls[onCalls.length - 1][0]
+
+  // tracks 프로퍼티가 없는 score → serializeScore 내부에서 실제로 TypeError 발생
+  expect(() => scoreLoadedCallback({})).not.toThrow()
+  expect(pushSnapshot).not.toHaveBeenCalled()
+  expect(consoleErrorSpy).toHaveBeenCalled()
+
+  consoleErrorSpy.mockRestore()
+})

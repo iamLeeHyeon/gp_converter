@@ -78,7 +78,16 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       // 이미 있으면(구조편집→재로드 케이스) 편집 액션이 이미 pushSnapshot을
       // 호출했으므로 여기서 또 넣으면 undo 히스토리가 중복된다.
       if (score && useEditorStore.getState().present === null) {
-        pushSnapshot(serializeScore(score))
+        // serializeScore는 실제 악보 데이터를 그대로 훑는 함수라 예외가 나면
+        // 여기서 절대 삼키지 않고 위로 던지면 안 된다 — alphaTab의 scoreLoaded
+        // 리스너 안에서 예외가 새면 그 뒤 실제 악보 렌더링 자체가 멈춰서
+        // "변환은 됐는데 화면에 악보가 안 뜨는" 증상으로 이어진다(실사례로
+        // 재현된 버그). present를 못 채우는 것보다 렌더링이 죽는 게 훨씬 나쁘다.
+        try {
+          pushSnapshot(serializeScore(score))
+        } catch (e) {
+          console.error('악보 초기 스냅샷 생성 실패 — 트랙/구조 패널이 비어있을 수 있음', e)
+        }
       }
     })
     api.playerStateChanged.on((e: any) => setPlaying(e.state === 1))
