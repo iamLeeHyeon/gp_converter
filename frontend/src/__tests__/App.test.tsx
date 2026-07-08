@@ -6,6 +6,7 @@ vi.mock('../lib/alphatab', () => ({
     scoreLoaded: { on: vi.fn() },
     playerStateChanged: { on: vi.fn() },
     noteMouseDown: { on: vi.fn() },
+    postRenderFinished: { on: vi.fn() },
     load: vi.fn(),
     playPause: vi.fn(),
     destroy: vi.fn(),

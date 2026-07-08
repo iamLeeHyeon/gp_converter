@@ -3,7 +3,7 @@ import { serializeScore } from '../lib/scoreSerializer'
 
 function mockBeat(isRest = false) {
   return {
-    duration: { value: 4, isDotted: false },
+    duration: 4, dots: 0,
     isRest,
     pickStroke: 0,
     notes: isRest ? [] : [{ string: 1, fret: 5, isHammerPullOrigin: false, isDead: false, isGhost: false, harmonicType: 0, slideOutType: 0, slideInType: 0 }],
@@ -28,7 +28,8 @@ function mockScore(opts: {
       staves: [{
         bars: [{
           masterBar: {
-            timeSignature: { numerator: 4, denominator: { value: 4 } },
+            timeSignatureNumerator: 4,
+            timeSignatureDenominator: 4,
             keySignature: opts.keySignature ?? 0,
             section: opts.sectionMarker ? { text: opts.sectionMarker } : null,
           },

@@ -7,7 +7,7 @@ function makeNote(overrides: Record<string, unknown> = {}) {
 
 function makeBeat(overrides: Record<string, unknown> = {}) {
   return {
-    duration: { value: 4, isDotted: false },
+    duration: 4, dots: 0,
     isRest: false, dynamics: 4, pickStroke: 0,
     notes: [makeNote()],
     ...overrides,
@@ -41,14 +41,14 @@ describe('applyEdit', () => {
     const { applyEdit } = await import('../lib/scoreApplier')
     const score = makeScore()
     applyEdit(score, { ...POS, noteIndex: null }, { type: 'duration', value: 8 })
-    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].duration.value).toBe(8)
+    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].duration).toBe(8)
   })
 
   it('점음표를 토글한다', async () => {
     const { applyEdit } = await import('../lib/scoreApplier')
     const score = makeScore()
     applyEdit(score, { ...POS, noteIndex: null }, { type: 'dotted', value: true })
-    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].duration.isDotted).toBe(true)
+    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].dots).toBe(1)
   })
 
   it('hammer-on 이펙트를 적용한다', async () => {

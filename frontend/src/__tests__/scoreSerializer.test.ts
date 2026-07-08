@@ -13,7 +13,7 @@ function makeNote(overrides: Record<string, unknown> = {}) {
 
 function makeBeat(overrides: Record<string, unknown> = {}) {
   return {
-    duration: { value: 4, isDotted: false },
+    duration: 4, dots: 0,
     isRest: false,
     dynamics: 4,      // 4 = mf (alphaTab DynamicValue enum)
     pickStroke: 0,    // 0 = None
@@ -30,7 +30,12 @@ function makeScore(beats = [makeBeat()]) {
       staves: [{
         bars: [{
           masterBar: {
-            timeSignature: { numerator: 4, denominator: { value: 4 } },
+            // alphaTab의 실제 MasterBar 모양: 중첩 timeSignature 객체가 아니라
+            // 평평한 timeSignatureNumerator/timeSignatureDenominator 필드다.
+            // (예전엔 여기가 중첩 모양으로 잘못 목킹돼있어서 구현의 같은 실수를
+            // 테스트가 못 잡았다 — 실사용 중 발견된 버그)
+            timeSignatureNumerator: 4,
+            timeSignatureDenominator: 4,
             keySignature: 0,
             section: null,
           },
@@ -63,7 +68,7 @@ describe('serializeScore', () => {
 
   it('점음표를 직렬화한다', async () => {
     const { serializeScore } = await import('../lib/scoreSerializer')
-    const snap = serializeScore(makeScore([makeBeat({ duration: { value: 4, isDotted: true } })]))
+    const snap = serializeScore(makeScore([makeBeat({ dots: 1 })]))
     expect(snap.tracks[0].measures[0].beats[0].dotted).toBe(true)
   })
 
@@ -99,8 +104,8 @@ describe('serializeScore', () => {
 
   it('박자표를 직렬화한다', async () => {
     const score = makeScore()
-    score.tracks[0].staves[0].bars[0].masterBar.timeSignature.numerator = 3
-    score.tracks[0].staves[0].bars[0].masterBar.timeSignature.denominator.value = 4
+    score.tracks[0].staves[0].bars[0].masterBar.timeSignatureNumerator = 3
+    score.tracks[0].staves[0].bars[0].masterBar.timeSignatureDenominator = 4
     const { serializeScore } = await import('../lib/scoreSerializer')
     const snap = serializeScore(score)
     expect(snap.tracks[0].measures[0].timeSignature).toEqual({ num: 3, den: 4 })

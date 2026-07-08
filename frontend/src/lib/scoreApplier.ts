@@ -46,9 +46,11 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
   const beat = getBeat(score, pos)
 
   if (edit.type === 'duration') {
-    beat.duration.value = edit.value
+    // beat.duration은 Duration enum 값 자체(Quarter=4 등) — 객체가 아니다
+    beat.duration = edit.value
   } else if (edit.type === 'dotted') {
-    beat.duration.isDotted = edit.value
+    // 점음표 개수는 beat.dots(0=없음, 1=점음표 하나)로 관리된다
+    beat.dots = edit.value ? 1 : 0
   } else if (edit.type === 'dynamic') {
     beat.dynamics = DYNAMIC_INDICES[edit.value]
   } else if (edit.type === 'strumDown') {

@@ -38,8 +38,12 @@ export function serializeBeat(beat: any): SnapshotBeat {
     }),
   )
   return {
-    duration: beat.duration.value as 1 | 2 | 4 | 8 | 16 | 32,
-    dotted: beat.duration.isDotted as boolean,
+    // alphaTab의 Beat.duration은 객체가 아니라 Duration enum 값 자체(Quarter=4 등)이고,
+    // 점음표 개수는 별도 필드 dots(0=없음)로 관리된다 (실사용 중 "Cannot create
+    // property 'value' on number '4'" 예외로 재현된 버그 — duration.value처럼
+    // 중첩 프로퍼티가 있다고 잘못 가정했었다).
+    duration: beat.duration as 1 | 2 | 4 | 8 | 16 | 32,
+    dotted: (beat.dots as number) > 0,
     status: beat.isRest ? 'rest' : 'normal',
     notes,
     strumDown: pickStroke === 2 ? true : pickStroke === 1 ? false : undefined,
@@ -72,9 +76,14 @@ export function serializeScore(score: any): ScoreSnapshot {
       )
 
       return {
+        // alphaTab의 MasterBar는 timeSignature란 중첩 객체가 아니라
+        // timeSignatureNumerator/timeSignatureDenominator 평평한 필드를 쓴다
+        // (실사용 중 TypeError로 재현된 버그 — commitEdit 안에서 이 예외가
+        // try/catch 없이 그대로 새어나가 render()까지 못 가서, 음표 수정
+        // 버튼을 눌러도 화면이 하나도 안 바뀌던 원인이었다).
         timeSignature: {
-          num: mb.timeSignature.numerator as number,
-          den: mb.timeSignature.denominator.value as number,
+          num: mb.timeSignatureNumerator as number,
+          den: mb.timeSignatureDenominator as number,
         },
         keySignature,
         sectionMarker,

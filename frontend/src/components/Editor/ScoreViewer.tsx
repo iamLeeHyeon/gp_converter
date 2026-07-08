@@ -20,6 +20,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null)
   const [playing, setPlaying] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
 
   const { selected, fileId, present, saveStatus, setSelected, pushSnapshot, undo, redo } = useEditorStore()
   const storeGp5Buffer = useEditorStore(s => s.gp5Buffer)
@@ -51,8 +52,13 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   const commitEdit = useCallback((edit: EditPayload) => {
     if (!apiRef.current?.score || !selected) return
     applyEdit(apiRef.current.score, selected, edit)
-    const snap = serializeScore(apiRef.current.score)
-    pushSnapshot(snap)
+    // serializeScore 실패해도 실제 편집(applyEdit)은 이미 반영됐으니 render는 항상 실행한다
+    // (예전엔 여기서 예외가 새어나가 render()까지 못 가서 편집 버튼이 안 먹는 것처럼 보였다)
+    try {
+      pushSnapshot(serializeScore(apiRef.current.score))
+    } catch (e) {
+      console.error('편집 스냅샷 생성 실패 — undo 히스토리에는 안 남지만 화면은 갱신됩니다', e)
+    }
     apiRef.current.render()
   }, [selected, pushSnapshot])
 
@@ -64,6 +70,23 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
 
   // 자동저장
   useSyncFile(fileId, present)
+
+  // 선택된 음표머리 주위 점선 사각형 표시용 — alphaTab의 boundsLookup에서
+  // 실제 렌더링된 위치를 읽어온다. includeNoteBounds(alphatab.ts)가 켜져
+  // 있어야 notes 배열이 채워진다.
+  const updateSelectionRectFromNote = useCallback((note: any) => {
+    try {
+      const lookup = (apiRef.current as any)?.renderer?.boundsLookup
+      const beatBounds = lookup?.findBeat(note.beat)
+      const noteBounds = beatBounds?.notes?.find((nb: any) => nb.note === note)
+      if (noteBounds) {
+        const b = noteBounds.noteHeadBounds
+        setSelectionRect({ x: b.x, y: b.y, w: b.w, h: b.h })
+        return
+      }
+    } catch { /* bounds 조회 실패 시 아래에서 선택 표시 제거 */ }
+    setSelectionRect(null)
+  }, [])
 
   // alphaTab 초기화
   useEffect(() => {
@@ -100,16 +123,32 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         noteIndex: note.index as number,
       }
       setSelected(pos)
+      updateSelectionRectFromNote(note)
+    })
+    // 편집으로 인한 재렌더 후에도 선택 표시 위치를 다시 계산한다(레이아웃이
+    // 바뀌어 음표 위치가 이동할 수 있으므로) — 선택이 없으면 표시를 지운다.
+    api.postRenderFinished.on(() => {
+      const sel = useEditorStore.getState().selected
+      const score = apiRef.current?.score as any
+      if (!sel || !score) { setSelectionRect(null); return }
+      try {
+        const beat = score.tracks[sel.trackIndex]?.staves[0]?.bars[sel.measureIndex]
+          ?.voices[sel.voiceIndex]?.beats[sel.beatIndex]
+        const note = sel.noteIndex !== null ? beat?.notes[sel.noteIndex] : null
+        if (note) updateSelectionRectFromNote(note)
+        else setSelectionRect(null)
+      } catch { setSelectionRect(null) }
     })
 
     return () => { api.destroy(); apiRef.current = null }
-  }, [setSelected])
+  }, [setSelected, updateSelectionRectFromNote])
 
   // GP5 로드
   useEffect(() => {
     if (!apiRef.current || !gp5Buffer) return
     setLoaded(false)
     setSelected(null)
+    setSelectionRect(null)
     apiRef.current.load(gp5Buffer)
   }, [gp5Buffer, setSelected])
 
@@ -181,7 +220,23 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
             </span>
           </div>
         )}
-        <div ref={containerRef} style={{ width: '100%', flex: 1 }} />
+        <div style={{ position: 'relative', width: '100%', flex: 1 }}>
+          <div ref={containerRef} style={{ width: '100%' }} />
+          {selectionRect && (
+            <div
+              style={{
+                position: 'absolute',
+                left: selectionRect.x - 6,
+                top: selectionRect.y - 4,
+                width: selectionRect.w + 12,
+                height: selectionRect.h + 8,
+                border: '2px dashed var(--color-primary)',
+                borderRadius: 6,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {/* 우측 패널: StructurePanel + EditPanel */}
