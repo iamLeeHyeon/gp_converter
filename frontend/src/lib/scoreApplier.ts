@@ -23,6 +23,20 @@ const EFFECT_SLIDE_MAP: Partial<Record<Effect, { slideInType?: number; slideOutT
   'slide-out-below': { slideOutType: 4 },  // SlideOutType.OutDown
 }
 
+// 새 노트는 반드시 실제 alphaTab Note 클래스를 인스턴스화해서 만들어야 한다.
+// {string, fret, ...} 같은 순수 객체 리터럴로 만들면 생성자에서 자동 할당되는
+// note.id(Note.globalNoteId++)가 없어서 여러 새 노트가 전부 id=undefined로
+// 겹치고, 렌더러의 _noteGlyphLookup(Map, key=note.id)에서 서로 덮어써
+// "Cannot read properties of null (reading 'glyph')" 예외가 나던 버그가 있었다
+// (화음 노트를 여러 개 추가했을 때 실사용 중 재현됨).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function makeNote(string: number, fret: number): any {
+  const note = new model.Note()
+  note.string = string
+  note.fret = fret
+  return note
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getBeat(score: any, pos: NotePosition) {
   return score.tracks[pos.trackIndex]
@@ -113,7 +127,7 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
     // 하는 note.beat/note.index/noteStringLookup 백링크가 안 채워져 렌더러가
     // "Cannot read properties of undefined (reading 'voice')" 예외를 던진다
     // (실사용 중 재현된 버그) — 공개 메서드 Beat.addNote로 위임한다.
-    beat.addNote({ string: newString, fret: 0, isHammerPullOrigin: false, isGhost: false, isDead: false, slideInType: 0, slideOutType: 0, harmonicType: 0 })
+    beat.addNote(makeNote(newString, 0))
   } else if (edit.type === 'deleteNote' && pos.noteIndex !== null) {
     beat.removeNote(beat.notes[pos.noteIndex])
   } else if (edit.type === 'fret' && pos.noteIndex !== null) {

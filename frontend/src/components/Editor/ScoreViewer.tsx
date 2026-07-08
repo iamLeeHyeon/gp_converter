@@ -3,7 +3,8 @@ import { initAlphaTab } from '../../lib/alphatab'
 import type * as alphaTab from '@coderline/alphatab'
 import { useEditorStore } from '../../store/editorStore'
 import { serializeScore, serializeBeat, getNoteEffect } from '../../lib/scoreSerializer'
-import { applyEdit, type EditPayload } from '../../lib/scoreApplier'
+import { applyEdit, makeNote, type EditPayload } from '../../lib/scoreApplier'
+import { collectPitchYSamples, estimatePitchFromY, findStringFretForPitch } from '../../lib/pitchPosition'
 import { useSyncFile, syncAndReload as syncFileAndReload } from '../../lib/useSyncFile'
 import EditPanel from './EditPanel'
 import ExportMenu from './ExportMenu'
@@ -162,8 +163,8 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       const beat = lookup.getBeatAtPos(x, y)
       if (!beat) return
       let note = lookup.getNoteAtPos(beat, x, y)
+      const beatBounds = lookup.findBeat(beat)
       if (!note) {
-        const beatBounds = lookup.findBeat(beat)
         const hit = beatBounds?.notes?.find((nb: any) => {
           const b = nb.noteHeadBounds
           return x >= b.x - HIT_PAD && x <= b.x + b.w + HIT_PAD
@@ -185,10 +186,39 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         return
       }
 
-      // 음표가 없는 빈 자리(쉼표 마디, 마디 내 여백) 클릭 — alphaTab은 클릭
-      // 좌표를 특정 기타 줄(string)로 변환하는 공개 API가 없어서 "어느 줄에
-      // 음을 넣을지"까지는 못 정한다. 대신 그 박자 자체를 선택 상태로 만들어
-      // 사이드바의 "+ 음표 추가" 버튼으로 화음을 쌓을 수 있게 한다.
+      // 음표가 없는 빈 자리(쉼표, 마디 여백) 클릭 — 같은 시스템에 이미 렌더링된
+      // 노트들의 (실제 음높이, 노트머리 Y좌표)를 선형회귀해서 클릭 위치가 어떤
+      // 음인지 추정하고, 그 음을 낼 수 있는 (줄, 프렛)이 비어있으면 바로 그
+      // 자리에 새 음표를 만들어 선택한다. 추정에 실패하면(탭보 영역 클릭 등)
+      // 박자 전체만 선택해서 사이드바의 "+ 화음 음 추가"로 대신하게 한다.
+      try {
+        const staff = (apiRef.current?.score as any)?.tracks[0]?.staves[0]
+        const samples = collectPitchYSamples(beatBounds)
+        const targetPitch = estimatePitchFromY(samples, y)
+        const usedStrings = new Set((beat.notes as any[]).map((n) => n.string))
+        const target = targetPitch === null ? null : findStringFretForPitch(staff, usedStrings, targetPitch)
+        if (target) {
+          beat.addNote(makeNote(target.string, target.fret))
+          const newNote = beat.notes[beat.notes.length - 1]
+          const pos: NotePosition = {
+            trackIndex: 0,
+            measureIndex: beat.voice.bar.index as number,
+            voiceIndex: beat.voice.index as number,
+            beatIndex: beat.index as number,
+            noteIndex: newNote.index as number,
+          }
+          setSelected(pos)
+          try {
+            pushSnapshot(serializeScore(apiRef.current!.score))
+          } catch (e) {
+            console.error('편집 스냅샷 생성 실패 — undo 히스토리에는 안 남지만 화면은 갱신됩니다', e)
+          }
+          apiRef.current!.render()
+          updateSelectionRectFromNote(newNote)
+          return
+        }
+      } catch { /* 추정 실패 시 아래에서 박자 전체 선택으로 폴백 */ }
+
       const pos: NotePosition = {
         trackIndex: 0,
         measureIndex: beat.voice.bar.index as number,
@@ -206,7 +236,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       api.destroy()
       apiRef.current = null
     }
-  }, [setSelected, updateSelectionRectFromNote, updateSelectionRectFromBeat])
+  }, [setSelected, updateSelectionRectFromNote, updateSelectionRectFromBeat, pushSnapshot])
 
   // GP5 로드
   useEffect(() => {
