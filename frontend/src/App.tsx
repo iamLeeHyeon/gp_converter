@@ -29,6 +29,16 @@ function MainPage() {
     if (token) fetchMe()
   }, [token])
 
+  // 마운트 시(새로고침 포함) 이미 만료된 토큰일 수 있으니 인터벌을 기다리지
+  // 않고 딱 한 번만 즉시 갱신한다 — api.ts의 401 자동 재시도가 근본 안전망이고,
+  // 이건 초기 로드에서 불필요한 401 왕복을 줄이기 위한 보조 조치. deps를
+  // 빈 배열로 둬야 한다: refreshAccessToken 성공 시 token이 바뀌는데, 이 effect가
+  // token을 deps로 삼으면 갱신→token변경→재실행→갱신…으로 무한 루프가 된다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (token) refreshAccessToken()
+  }, [])
+
   useEffect(() => {
     if (!token) return
     const id = setInterval(() => { refreshAccessToken() }, TOKEN_REFRESH_INTERVAL_MS)
