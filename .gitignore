@@ -39,3 +39,6 @@ skills-lock.json
 
 # Frontend build output
 static/assets/
+
+# impeccable live-mode 세션 상태(임시, 커밋 대상 아님) — config.json은 추적함
+.impeccable/live/sessions/

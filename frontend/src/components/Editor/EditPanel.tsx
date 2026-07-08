@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import type { NotePosition, Dynamic, Effect } from '../../lib/scoreTypes'
 import type { EditPayload } from '../../lib/scoreApplier'
 
@@ -29,6 +29,26 @@ const EFFECTS: Array<{ value: Effect; label: string }> = [
   { value: 'harmonic', label: '⬦' },
 ]
 
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        border: active ? 'none' : '1px solid var(--color-border)',
+        background: active ? 'var(--color-primary)' : 'var(--color-surface)',
+        color: active ? '#ffffff' : 'var(--color-ink)',
+        borderRadius: 6,
+        padding: '4px 10px',
+        fontSize: 12,
+        fontWeight: active ? 700 : 500,
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function EditPanel({ selectedPosition, currentBeat, currentNote, onEditBeat, onEditNote }: Props) {
   const [fretInput, setFretInput] = useState<string>(String(currentNote?.fret ?? ''))
 
@@ -38,7 +58,7 @@ export default function EditPanel({ selectedPosition, currentBeat, currentNote, 
 
   if (!selectedPosition || !currentBeat) {
     return (
-      <div style={{ padding: 16, color: '#888', fontSize: 13 }}>
+      <div style={{ padding: 16, color: 'var(--color-muted)', fontSize: 13 }}>
         음표를 클릭하면 편집할 수 있습니다
       </div>
     )
@@ -55,74 +75,53 @@ export default function EditPanel({ selectedPosition, currentBeat, currentNote, 
     <div style={{ padding: 12, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* 지속시간 */}
       <section>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>지속시간</div>
+        <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--color-ink)' }}>지속시간</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {DURATIONS.map((d) => (
-            <button
-              key={d}
-              onClick={() => onEditBeat({ type: 'duration', value: d })}
-              style={{ fontWeight: currentBeat.duration === d ? 700 : 400 }}
-            >
+            <Chip key={d} active={currentBeat.duration === d} onClick={() => onEditBeat({ type: 'duration', value: d })}>
               {d}
-            </button>
+            </Chip>
           ))}
-          <button
-            onClick={() => onEditBeat({ type: 'dotted', value: !currentBeat.dotted })}
-            style={{ fontWeight: currentBeat.dotted ? 700 : 400 }}
-          >
+          <Chip active={currentBeat.dotted} onClick={() => onEditBeat({ type: 'dotted', value: !currentBeat.dotted })}>
             점음표
-          </button>
+          </Chip>
         </div>
       </section>
 
       {/* 다이나믹 */}
       <section>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>다이나믹</div>
+        <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--color-ink)' }}>다이나믹</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {DYNAMICS.map((d) => (
-            <button
-              key={d}
-              onClick={() => onEditBeat({ type: 'dynamic', value: d })}
-              style={{ fontWeight: currentBeat.dynamic === d ? 700 : 400 }}
-            >
+            <Chip key={d} active={currentBeat.dynamic === d} onClick={() => onEditBeat({ type: 'dynamic', value: d })}>
               {d}
-            </button>
+            </Chip>
           ))}
         </div>
       </section>
 
       {/* 스트럼 */}
       <section>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>스트럼</div>
+        <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--color-ink)' }}>스트럼</div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button
-            onClick={() => onEditBeat({ type: 'strumDown', value: true })}
-            style={{ fontWeight: currentBeat.strumDown === true ? 700 : 400 }}
-          >
-            ▼
-          </button>
-          <button
-            onClick={() => onEditBeat({ type: 'strumDown', value: false })}
-            style={{ fontWeight: currentBeat.strumDown === false ? 700 : 400 }}
-          >
-            ▲
-          </button>
-          <button onClick={() => onEditBeat({ type: 'strumDown', value: undefined })}>없음</button>
+          <Chip active={currentBeat.strumDown === true} onClick={() => onEditBeat({ type: 'strumDown', value: true })}>▼</Chip>
+          <Chip active={currentBeat.strumDown === false} onClick={() => onEditBeat({ type: 'strumDown', value: false })}>▲</Chip>
+          <Chip active={currentBeat.strumDown === undefined} onClick={() => onEditBeat({ type: 'strumDown', value: undefined })}>없음</Chip>
         </div>
       </section>
 
       {/* 음표 추가 */}
       <section>
-        <button onClick={() => onEditBeat({ type: 'addNote' })}>+ 음표 추가</button>
+        <button onClick={() => onEditBeat({ type: 'addNote' })} className="btn-ghost">+ 음표 추가</button>
       </section>
 
       {/* 음표 편집 (음표가 선택된 경우) */}
       {currentNote && selectedPosition.noteIndex !== null && (
         <>
-          <hr style={{ margin: '4px 0' }} />
+          <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
 
           <section>
-            <label htmlFor="fret-input" style={{ fontWeight: 600 }}>프렛</label>
+            <label htmlFor="fret-input" style={{ fontWeight: 600, color: 'var(--color-ink)' }}>프렛</label>
             <input
               id="fret-input"
               type="number"
@@ -132,33 +131,25 @@ export default function EditPanel({ selectedPosition, currentBeat, currentNote, 
               onChange={(e) => setFretInput(e.target.value)}
               onBlur={handleFretCommit}
               onKeyDown={(e) => { if (e.key === 'Enter') handleFretCommit() }}
-              style={{ width: 56, marginLeft: 8 }}
+              className="field"
+              style={{ width: 56, marginLeft: 8, padding: '4px 8px' }}
             />
           </section>
 
           <section>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>이펙트</div>
+            <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--color-ink)' }}>이펙트</div>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              <button
-                onClick={() => onEditNote({ type: 'effect', value: null })}
-                style={{ fontWeight: !currentNote.effect ? 700 : 400 }}
-              >
-                없음
-              </button>
+              <Chip active={!currentNote.effect} onClick={() => onEditNote({ type: 'effect', value: null })}>없음</Chip>
               {EFFECTS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  onClick={() => onEditNote({ type: 'effect', value })}
-                  style={{ fontWeight: currentNote.effect === value ? 700 : 400 }}
-                >
+                <Chip key={value} active={currentNote.effect === value} onClick={() => onEditNote({ type: 'effect', value })}>
                   {label}
-                </button>
+                </Chip>
               ))}
             </div>
           </section>
 
           <section>
-            <button onClick={() => onEditNote({ type: 'deleteNote' })}>× 음표 삭제</button>
+            <button onClick={() => onEditNote({ type: 'deleteNote' })} style={{ color: 'var(--color-danger)', background: 'none', border: '1px solid var(--color-danger)', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>× 음표 삭제</button>
           </section>
         </>
       )}

@@ -21,12 +21,12 @@ export default function ProgressBar({ pct, step, visible }: Props) {
         padding: '16px 0',
       }}
     >
-      <p style={{ marginBottom: 8, fontSize: 14 }}>
+      <p style={{ marginBottom: 8, fontSize: 13, color: 'rgba(255,255,255,0.9)' }}>
         {STEP_LABELS[step] || '변환 중...'}  {pct}%
       </p>
       <div
         style={{
-          background: '#e0e0e0',
+          background: 'rgba(255,255,255,0.25)',
           borderRadius: 4,
           height: 8,
           overflow: 'hidden',
@@ -40,7 +40,7 @@ export default function ProgressBar({ pct, step, visible }: Props) {
           style={{
             width: `${pct}%`,
             height: '100%',
-            background: '#1976d2',
+            background: '#ffffff',
             transition: 'width 0.4s ease',
           }}
         />

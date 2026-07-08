@@ -57,29 +57,33 @@ export default function ShareModal({ fileId, onClose }: Props) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', padding: 16, minWidth: 300 }}>
-        <h3 style={{ marginTop: 0 }}>공유 링크</h3>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(22,35,58,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div className="card" style={{ minWidth: 320 }}>
+        <h3 style={{ marginBottom: 12 }}>공유 링크</h3>
 
-        {loading && <p>로딩 중…</p>}
+        {loading && <p style={{ fontSize: 13, color: 'var(--color-muted)' }}>로딩 중…</p>}
 
         {!loading && info?.token && (
-          <div>
-            <input readOnly value={`${window.location.origin}/share/${info.token}`} style={{ width: '100%' }} />
-            <p style={{ fontSize: 12, color: '#666' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input readOnly value={`${window.location.origin}/share/${info.token}`} className="field" style={{ width: '100%' }} />
+            <p style={{ fontSize: 12, color: 'var(--color-muted)' }}>
               만료: {info.expires_at ? new Date(info.expires_at).toLocaleDateString() : '무기한'}
             </p>
-            <button onClick={handleCopy}>{copied ? '복사됨' : '복사'}</button>
-            <button onClick={handleRevoke}>공유 중단</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleCopy} className="btn-primary" style={{ padding: '8px 16px' }}>{copied ? '복사됨' : '복사'}</button>
+              <button onClick={handleRevoke} className="btn-ghost">공유 중단</button>
+            </div>
           </div>
         )}
 
         {!loading && !info?.token && (
-          <div>
-            <label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: 13, color: 'var(--color-ink)' }}>
               만료:
               <select
                 aria-label="만료기간"
+                className="field"
+                style={{ marginLeft: 8 }}
                 value={expiresInDays === null ? 'null' : String(expiresInDays)}
                 onChange={e => setExpiresInDays(e.target.value === 'null' ? null : (Number(e.target.value) as 7 | 30))}
               >
@@ -88,12 +92,12 @@ export default function ShareModal({ fileId, onClose }: Props) {
                 <option value="null">무기한</option>
               </select>
             </label>
-            <button onClick={handleCreate}>링크 생성</button>
+            <button onClick={handleCreate} className="btn-primary">링크 생성</button>
           </div>
         )}
 
-        <div style={{ marginTop: 8 }}>
-          <button onClick={onClose}>닫기</button>
+        <div style={{ marginTop: 12 }}>
+          <button onClick={onClose} className="btn-ghost">닫기</button>
         </div>
       </div>
     </div>

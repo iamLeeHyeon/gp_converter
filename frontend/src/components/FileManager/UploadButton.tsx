@@ -44,7 +44,9 @@ export default function UploadButton({ onComplete }: Props) {
 
   return (
     <div>
-      <label htmlFor="pdf-input">PDF 파일 선택</label>
+      <label htmlFor="pdf-input" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>
+        PDF 파일 선택
+      </label>
       <input
         id="pdf-input"
         ref={inputRef}
@@ -52,8 +54,29 @@ export default function UploadButton({ onComplete }: Props) {
         accept="application/pdf"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         disabled={busy}
+        style={{
+          display: 'block',
+          width: '100%',
+          fontSize: 12,
+          color: '#ffffff',
+          marginBottom: 12,
+        }}
       />
-      <button onClick={handleUpload} disabled={!file || busy}>
+      <button
+        onClick={handleUpload}
+        disabled={!file || busy}
+        style={{
+          width: '100%',
+          background: !file || busy ? 'rgba(255,255,255,0.3)' : '#ffffff',
+          color: !file || busy ? 'rgba(255,255,255,0.7)' : '#4a9df0',
+          border: 'none',
+          borderRadius: 8,
+          padding: '10px 16px',
+          fontSize: 14,
+          fontWeight: 700,
+          cursor: !file || busy ? 'not-allowed' : 'pointer',
+        }}
+      >
         변환 시작
       </button>
       <ProgressBar
@@ -61,7 +84,7 @@ export default function UploadButton({ onComplete }: Props) {
         step={progress?.step ?? ''}
         visible={!!progress}
       />
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {error && <p style={{ color: '#ffe5e5', fontSize: 13 }}>{error}</p>}
     </div>
   )
 }

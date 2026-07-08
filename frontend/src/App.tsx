@@ -51,25 +51,25 @@ function MainPage() {
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {/* 사이드바 */}
-      <aside style={{ width: 260, minWidth: 200, borderRight: '1px solid #ddd', padding: 16, overflowY: 'auto', flexShrink: 0 }}>
-        <h2 style={{ marginTop: 0 }}>GP Converter</h2>
+      <aside style={{ width: 280, minWidth: 220, background: 'linear-gradient(160deg, #5b9fe8 0%, #8cc6fb 100%)', color: '#ffffff', padding: 20, overflowY: 'auto', flexShrink: 0 }}>
+        <h2 style={{ marginTop: 0, marginBottom: 24, fontSize: '2rem', fontWeight: 700, letterSpacing: '-0.02em', color: '#ffffff' }}>GP Converter</h2>
         {token && emailVerified === false && (
-          <div style={{ background: '#fff3cd', padding: 8, fontSize: 12, marginBottom: 12 }}>
+          <div style={{ background: '#ffffff', padding: 10, fontSize: 12, marginBottom: 12, borderRadius: 8, color: '#4a9df0', fontWeight: 600 }}>
             이메일 인증이 필요합니다 — 메일함을 확인하세요.
           </div>
         )}
         <UploadButton onComplete={handleComplete} />
-        <hr />
-        <h3>내 파일</h3>
+        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.3)', margin: '20px 0' }} />
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)', marginBottom: 12 }}>내 파일</h3>
         {token ? (
           <FileList onSelect={handleFileSelect} />
         ) : (
-          <p style={{ fontSize: 13, color: '#666' }}>
-            <Link to="/login">로그인</Link>하면 파일이 저장됩니다
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }}>
+            <Link to="/login" style={{ color: '#ffffff', fontWeight: 600, textDecoration: 'underline' }}>로그인</Link>하면 파일이 저장됩니다
           </p>
         )}
         {token && (
-          <button onClick={logout} style={{ marginTop: 16, fontSize: 12 }}>로그아웃</button>
+          <button onClick={logout} style={{ marginTop: 16, fontSize: 13, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.6)', color: '#ffffff', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>로그아웃</button>
         )}
         {token && <BillingPanel />}
       </aside>

@@ -26,13 +26,13 @@ export default function SharedScoreViewer() {
   }, [token])
 
   if (error) {
-    return <div style={{ padding: 32, textAlign: 'center', color: '#666' }}>{error}</div>
+    return <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted)' }}>{error}</div>
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <div style={{ padding: 8 }}>
-        <button onClick={() => apiRef.current?.playPause()}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)' }}>
+      <div style={{ padding: 12, borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+        <button onClick={() => apiRef.current?.playPause()} className="btn-primary" style={{ padding: '8px 20px' }}>
           {playing ? '일시정지' : '재생'}
         </button>
       </div>

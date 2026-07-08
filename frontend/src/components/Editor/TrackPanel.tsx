@@ -64,8 +64,8 @@ export default function TrackPanel() {
   const currentPreset = detectPreset(track?.tuning)
 
   return (
-    <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <strong>트랙</strong>
+    <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <strong style={{ fontSize: 13, color: 'var(--color-ink)' }}>트랙</strong>
 
       {/* 트랙 목록 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -74,14 +74,15 @@ export default function TrackPanel() {
             key={i}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              background: i === selectedTrackIndex ? '#ddf' : undefined,
-              cursor: 'pointer', padding: '2px 4px',
+              background: i === selectedTrackIndex ? 'var(--color-primary-light)' : undefined,
+              borderRadius: 6,
+              cursor: 'pointer', padding: '4px 6px',
             }}
             onClick={() => useEditorStore.setState({ selectedTrackIndex: i })}
           >
-            <span style={{ flex: 1, fontSize: 12 }}>🎸 {t.name ?? `Track ${i + 1}`}</span>
+            <span style={{ flex: 1, fontSize: 12, color: i === selectedTrackIndex ? 'var(--color-ink)' : 'var(--color-muted)' }}>🎸 {t.name ?? `Track ${i + 1}`}</span>
             <button
-              style={{ fontSize: 10, color: 'red' }}
+              style={{ fontSize: 10, color: 'var(--color-danger)', background: 'none', border: 'none', cursor: 'pointer' }}
               disabled={busy || tracks.length <= 1}
               onClick={(e) => { e.stopPropagation(); applyAndSync({ type: 'deleteTrack', trackIndex: i }) }}
             >×</button>
@@ -89,13 +90,13 @@ export default function TrackPanel() {
         ))}
       </div>
 
-      <button disabled={busy} onClick={() => applyAndSync({ type: 'addTrack' })}>
+      <button disabled={busy} className="btn-ghost" onClick={() => applyAndSync({ type: 'addTrack' })}>
         트랙 추가
       </button>
 
       {track && (
-        <div style={{ borderTop: '1px solid #ddd', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <strong style={{ fontSize: 12 }}>트랙 {selectedTrackIndex + 1} 속성</strong>
+        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <strong style={{ fontSize: 12, color: 'var(--color-ink)' }}>트랙 {selectedTrackIndex + 1} 속성</strong>
 
           {/* 트랙 이름 */}
           <label style={{ fontSize: 12 }}>
@@ -142,11 +143,13 @@ export default function TrackPanel() {
           {/* Voice 토글 */}
           <div style={{ display: 'flex', gap: 4 }}>
             <button
-              style={{ fontWeight: activeVoice === 0 ? 'bold' : undefined }}
+              className={activeVoice === 0 ? 'btn-primary' : 'btn-ghost'}
+              style={{ fontSize: 12, padding: '6px 12px' }}
               onClick={() => useEditorStore.setState({ activeVoice: 0 })}
             >Voice 1</button>
             <button
-              style={{ fontWeight: activeVoice === 1 ? 'bold' : undefined }}
+              className={activeVoice === 1 ? 'btn-primary' : 'btn-ghost'}
+              style={{ fontSize: 12, padding: '6px 12px' }}
               onClick={() => useEditorStore.setState({ activeVoice: 1 })}
             >Voice 2</button>
           </div>

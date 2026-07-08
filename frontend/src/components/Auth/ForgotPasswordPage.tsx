@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import AuthLayout from './AuthLayout'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -15,17 +16,16 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80 }}>
-      <h1>비밀번호 찾기</h1>
+    <AuthLayout title="비밀번호 찾기">
       {sent ? (
-        <p>메일이 발송되었으면 잠시 후 확인해주세요.</p>
+        <p style={{ fontSize: 14, color: 'var(--color-muted)', textAlign: 'center' }}>메일이 발송되었으면 잠시 후 확인해주세요.</p>
       ) : (
-        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8, width: 280 }}>
-          <input type="email" placeholder="가입한 이메일" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <button onClick={handleSubmit} style={{ padding: '10px', cursor: 'pointer' }}>재설정 링크 받기</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input className="field" type="email" placeholder="가입한 이메일" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <button onClick={handleSubmit} className="btn-primary">재설정 링크 받기</button>
         </div>
       )}
-      <Link to="/login" style={{ fontSize: 13, marginTop: 16 }}>로그인으로 돌아가기</Link>
-    </div>
+      <Link to="/login" style={{ fontSize: 13, display: 'block', textAlign: 'center', marginTop: 16 }}>로그인으로 돌아가기</Link>
+    </AuthLayout>
   )
 }

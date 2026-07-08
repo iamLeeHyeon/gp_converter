@@ -40,19 +40,30 @@ export default function BillingPanel() {
 
   if (!usage) return null
 
+  const buttonStyle = {
+    marginTop: 8,
+    background: 'rgba(255,255,255,0.15)',
+    border: '1px solid rgba(255,255,255,0.6)',
+    color: '#ffffff',
+    borderRadius: 8,
+    padding: '6px 12px',
+    fontSize: 12,
+    cursor: 'pointer',
+  }
+
   return (
-    <div style={{ marginTop: 16, fontSize: 12, borderTop: '1px solid #ddd', paddingTop: 12 }}>
-      <strong>요금제: {usage.plan === 'pro' ? 'Pro' : 'Free'}</strong>
+    <div style={{ marginTop: 16, fontSize: 12, borderTop: '1px solid rgba(255,255,255,0.3)', paddingTop: 12, color: 'rgba(255,255,255,0.9)' }}>
+      <strong style={{ color: '#ffffff' }}>요금제: {usage.plan === 'pro' ? 'Pro' : 'Free'}</strong>
       {usage.plan === 'free' ? (
         <div>
-          <p>변환 {usage.conversions_used}/{usage.conversions_limit}</p>
-          <p>저장 {usage.files_used}/{usage.files_limit}</p>
-          <button onClick={handleUpgrade} disabled={busy}>Pro로 업그레이드</button>
+          <p style={{ margin: '4px 0' }}>변환 {usage.conversions_used}/{usage.conversions_limit}</p>
+          <p style={{ margin: '4px 0' }}>저장 {usage.files_used}/{usage.files_limit}</p>
+          <button onClick={handleUpgrade} disabled={busy} style={buttonStyle}>Pro로 업그레이드</button>
         </div>
       ) : (
         <div>
-          <p>무제한</p>
-          <button onClick={handleManage} disabled={busy}>구독 관리</button>
+          <p style={{ margin: '4px 0' }}>무제한</p>
+          <button onClick={handleManage} disabled={busy} style={buttonStyle}>구독 관리</button>
         </div>
       )}
     </div>

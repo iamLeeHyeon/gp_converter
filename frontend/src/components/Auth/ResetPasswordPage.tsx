@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../lib/api'
+import AuthLayout from './AuthLayout'
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
@@ -25,14 +26,13 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80 }}>
-      <h1>비밀번호 재설정</h1>
-      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8, width: 280 }}>
-        <input type="password" placeholder="새 비밀번호 (8자 이상)" value={password} onChange={(e) => setPassword(e.target.value)} />
-        <input type="password" placeholder="새 비밀번호 확인" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-        {error && <p style={{ color: 'red', fontSize: 13 }}>{error}</p>}
-        <button onClick={handleSubmit} style={{ padding: '10px', cursor: 'pointer' }}>비밀번호 변경</button>
+    <AuthLayout title="비밀번호 재설정">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <input className="field" type="password" placeholder="새 비밀번호 (8자 이상)" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input className="field" type="password" placeholder="새 비밀번호 확인" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        {error && <p style={{ color: 'var(--color-danger)', fontSize: 13 }}>{error}</p>}
+        <button onClick={handleSubmit} className="btn-primary" style={{ marginTop: 4 }}>비밀번호 변경</button>
       </div>
-    </div>
+    </AuthLayout>
   )
 }

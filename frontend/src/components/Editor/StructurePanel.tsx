@@ -34,8 +34,8 @@ export default function StructurePanel() {
   }
 
   return (
-    <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <strong>마디 구조</strong>
+    <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <strong style={{ fontSize: 13, color: 'var(--color-ink)' }}>마디 구조</strong>
 
       {/* 마디 목록 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
@@ -44,29 +44,32 @@ export default function StructurePanel() {
             key={i}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              background: i === selectedMeasureIndex ? '#ddf' : undefined,
-              cursor: 'pointer', padding: '2px 4px',
+              background: i === selectedMeasureIndex ? 'var(--color-primary-light)' : undefined,
+              borderRadius: 6,
+              cursor: 'pointer', padding: '4px 6px',
             }}
             onClick={() => useEditorStore.setState({ selectedMeasureIndex: i })}
           >
-            <span style={{ flex: 1, fontSize: 12 }}>
+            <span style={{ flex: 1, fontSize: 12, color: i === selectedMeasureIndex ? 'var(--color-ink)' : 'var(--color-muted)' }}>
               마디 {i + 1}
               {m.sectionMarker ? ` [${m.sectionMarker}]` : ''}
             </span>
             <button
               style={{ fontSize: 10 }}
+              className="btn-ghost"
               disabled={busy}
               aria-label={`마디 ${i + 1} 위로`}
               onClick={(e) => { e.stopPropagation(); applyAndSync({ type: 'moveMeasure', from: i, to: i - 1 }) }}
             >↑</button>
             <button
               style={{ fontSize: 10 }}
+              className="btn-ghost"
               disabled={busy}
               aria-label={`마디 ${i + 1} 아래로`}
               onClick={(e) => { e.stopPropagation(); applyAndSync({ type: 'moveMeasure', from: i, to: i + 1 }) }}
             >↓</button>
             <button
-              style={{ fontSize: 10, color: 'red' }}
+              style={{ fontSize: 10, color: 'var(--color-danger)', background: 'none', border: 'none', cursor: 'pointer' }}
               disabled={busy || measures.length <= 1}
               aria-label={`마디 ${i + 1} 삭제`}
               onClick={(e) => { e.stopPropagation(); applyAndSync({ type: 'deleteMeasure', index: i }) }}
@@ -77,14 +80,15 @@ export default function StructurePanel() {
 
       <button
         disabled={busy}
+        className="btn-ghost"
         onClick={() => applyAndSync({ type: 'addMeasure', afterIndex: selectedMeasureIndex })}
       >
         마디 추가
       </button>
 
       {selected && (
-        <div style={{ borderTop: '1px solid #ddd', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <strong style={{ fontSize: 12 }}>선택 마디 속성</strong>
+        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <strong style={{ fontSize: 12, color: 'var(--color-ink)' }}>선택 마디 속성</strong>
 
           {/* 박자표 — num/den 모두 spinbutton */}
           <label style={{ fontSize: 12 }}>

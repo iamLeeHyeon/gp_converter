@@ -45,15 +45,15 @@ export default function ExportMenu({ fileId, gp5Buffer = null, onPrint }: Props)
   }
 
   return (
-    <span style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}>
-      <button onClick={handleGP5} disabled={(!fileId && !gp5Buffer) || loading === 'gp5'}>
+    <span style={{ display: 'inline-flex', gap: 6, marginLeft: 8 }}>
+      <button onClick={handleGP5} disabled={(!fileId && !gp5Buffer) || loading === 'gp5'} className="btn-ghost">
         {loading === 'gp5' ? '…' : 'GP5 저장'}
       </button>
-      <button onClick={onPrint}>PDF 저장</button>
-      <button onClick={handleMIDI} disabled={!fileId || loading === 'midi'}>
+      <button onClick={onPrint} className="btn-ghost">PDF 저장</button>
+      <button onClick={handleMIDI} disabled={!fileId || loading === 'midi'} className="btn-ghost">
         {loading === 'midi' ? '…' : 'MIDI 저장'}
       </button>
-      <button onClick={() => setShareOpen(true)} disabled={!fileId}>공유</button>
+      <button onClick={() => setShareOpen(true)} disabled={!fileId} className="btn-ghost">공유</button>
       {shareOpen && fileId && (
         <ShareModal fileId={fileId} onClose={() => setShareOpen(false)} />
       )}

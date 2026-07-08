@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react'
 import { initAlphaTab } from '../../lib/alphatab'
 import type * as alphaTab from '@coderline/alphatab'
 import { useEditorStore } from '../../store/editorStore'
@@ -128,23 +128,29 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
   // 렌더링되는 다른 분기(조건부 early return)로 빠져서 containerRef.current가
   // 그 시점에 계속 null이었다 — 이후 gp5Buffer가 생겨도 effect가 재실행되지
   // 않아 alphaTab이 영영 초기화되지 않는 버그가 있었다(실제 앱에서 재현 확인).
+  const tabButtonStyle = (active: boolean): CSSProperties => ({
+    flex: 1,
+    padding: '10px 0',
+    background: 'none',
+    border: 'none',
+    borderBottom: active ? '2px solid var(--color-primary)' : '2px solid transparent',
+    color: active ? 'var(--color-primary)' : 'var(--color-muted)',
+    fontWeight: active ? 700 : 500,
+    fontSize: 13,
+    cursor: 'pointer',
+  })
+
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100%', background: 'var(--color-bg)' }}>
       {/* 좌측 탭 패널: 파일 | 트랙 */}
       {gp5Buffer && (
-        <aside style={{ width: 200, borderRight: '1px solid #ddd', overflow: 'auto', flexShrink: 0 }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid #ddd' }}>
-            <button
-              style={{ flex: 1, fontWeight: leftTab === 'files' ? 'bold' : undefined }}
-              onClick={() => setLeftTab('files')}
-            >파일</button>
-            <button
-              style={{ flex: 1, fontWeight: leftTab === 'tracks' ? 'bold' : undefined }}
-              onClick={() => setLeftTab('tracks')}
-            >트랙</button>
+        <aside style={{ width: 200, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', overflow: 'auto', flexShrink: 0 }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
+            <button style={tabButtonStyle(leftTab === 'files')} onClick={() => setLeftTab('files')}>파일</button>
+            <button style={tabButtonStyle(leftTab === 'tracks')} onClick={() => setLeftTab('tracks')}>트랙</button>
           </div>
           {leftTab === 'files'
-            ? <div style={{ padding: 8, fontSize: 12, color: '#666' }}>파일 목록은 왼쪽 사이드바를 이용하세요</div>
+            ? <div style={{ padding: 12, fontSize: 12, color: 'var(--color-muted)' }}>파일 목록은 왼쪽 사이드바를 이용하세요</div>
             : <TrackPanel />
           }
         </aside>
@@ -153,12 +159,15 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       {/* 악보 영역 */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {!gp5Buffer ? (
-          <div style={{ padding: 32, textAlign: 'center', color: '#666' }}>
-            악보를 불러오세요 — PDF를 업로드하거나 파일 목록에서 선택하세요
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', color: 'var(--color-ink)' }}>악보를 불러오세요</h2>
+              <p style={{ marginTop: 8, fontSize: 14, color: 'var(--color-muted)' }}>PDF를 업로드하거나 왼쪽 목록에서 파일을 선택하세요</p>
+            </div>
           </div>
         ) : (
-          <div style={{ padding: '8px 0', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => apiRef.current?.playPause()} disabled={!loaded}>
+          <div style={{ padding: '12px 16px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+            <button onClick={() => apiRef.current?.playPause()} disabled={!loaded} className="btn-primary" style={{ padding: '8px 20px' }}>
               {playing ? '일시정지' : '재생'}
             </button>
             <ExportMenu
@@ -166,7 +175,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
               gp5Buffer={gp5Buffer}
               onPrint={() => apiRef.current?.print()}
             />
-            <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--color-muted)', marginLeft: 8 }}>
               {saveStatus === 'saving' ? '저장 중…'
                 : saveStatus === 'saved' ? '저장됨'
                 : saveStatus === 'error' ? '저장 실패'
@@ -179,9 +188,9 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
 
       {/* 우측 패널: StructurePanel + EditPanel */}
       {gp5Buffer && (
-        <div style={{ width: 280, borderLeft: '1px solid #ddd', overflowY: 'auto', flexShrink: 0 }}>
+        <div style={{ width: 280, background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)', overflowY: 'auto', flexShrink: 0 }}>
           <StructurePanel />
-          <hr style={{ margin: '4px 0' }} />
+          <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
           <EditPanel
             selectedPosition={selected}
             currentBeat={currentBeat}
