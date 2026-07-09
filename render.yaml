@@ -28,6 +28,7 @@ services:
       - key: CELERY_BROKER_URL
         fromService:
           name: gp-converter-redis
+          type: keyvalue
           property: connectionString
       - key: FRONTEND_URL
         sync: false
