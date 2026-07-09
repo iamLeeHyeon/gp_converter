@@ -1,24 +1,27 @@
 # gp_converter
 
-PDF 악보를 업로드하면 Guitar Pro 파일(`.gp5`)로 변환해주는 웹 앱.
+PDF 악보를 업로드하면 Guitar Pro 파일(`.gp5`)로 변환하고, 브라우저에서 바로 재생/편집할 수 있는 웹 앱.
 
 ## 동작 원리
 
 ```
-PDF 업로드 → Audiveris(OMR, PDF→MusicXML) → music21(파싱) → PyGuitarPro(.gp5 작성) → 다운로드
+PDF 업로드 → Audiveris(OMR, PDF→MusicXML) → music21(파싱) → PyGuitarPro(.gp5 작성)
+→ 브라우저 에디터(alphaTab)로 재생/편집 → 다운로드 또는 공유링크
 ```
 
 - **입력:** 디지털 표준악보 PDF(MuseScore/Finale 등에서 출력한 오선보). 스캔 이미지나 기타 탭 전용 PDF는 아직 지원하지 않음.
 - **탭(TAB) 인식:** 표준악보(5선보)와 탭보표(6선보)가 같은 시스템에 함께 있는 디지털 PDF라면, 탭에 적힌 정확한 현/프렛을 읽어 사용한다(휴리스틱 추정보다 정확). 탭보표가 없거나 숫자 추출 결과가 표준악보 음표 개수와 다르면 자동으로 기존 휴리스틱(최저프렛)으로 폴백한다.
-- **출력:** Guitar Pro 5(`.gp5`) 파일.
+- **출력:** Guitar Pro 5(`.gp5`) 파일, 또는 MIDI로 재수출.
 - **변환 방식:** Audiveris(Java, 광학 악보 인식)로 PDF를 MusicXML로 바꾼 뒤, 순수 Python(`music21` + `PyGuitarPro`)으로 `.gp5`를 직접 작성한다. Java 서브프로세스는 Audiveris 하나뿐.
+- **에디터:** 변환 결과를 그 자리에서 alphaTab으로 렌더링 — 재생(클릭한 위치부터 재생 가능), 음표 클릭 편집, 마디 구조 편집, 트랙 정보 확인이 브라우저 안에서 끝난다.
 
 ## 기술 스택
 
-- **백엔드:** Python 3.9+, FastAPI, uvicorn
-- **변환 파이프라인:** Audiveris 5.10.2(OMR), music21(MusicXML 파싱), PyGuitarPro(GP5 작성)
-- **프론트:** 최소 HTML/JS (`static/index.html`)
-- **테스트:** pytest
+- **백엔드:** Python 3.9+, FastAPI, uvicorn, Celery(+ Redis), SQLAlchemy(SQLite)
+- **변환 파이프라인:** Audiveris 5.10.2(OMR), music21(MusicXML 파싱), PyGuitarPro(GP5 작성/MIDI 재수출)
+- **프론트엔드:** React 19 + TypeScript, Vite, zustand(상태관리), react-router-dom, `@coderline/alphatab`(악보 렌더/재생)
+- **인증/결제:** JWT(access+refresh) 자체 로그인 + Google OAuth, Stripe 구독(Pro 플랜)
+- **테스트:** pytest(백엔드), vitest(프론트엔드)
 
 ## 로컬에서 실행하기
 
@@ -77,30 +80,31 @@ watchmedo auto-restart -d app -p '*.py' --recursive -- celery -A app.tasks:celer
 
 **주의 3:** `uvicorn --reload`와 달리 Celery 워커 자체는 코드가 바뀌어도 절대 다시 읽지 않는다 — `app/` 아래 뭔가 고치고 워커를 재시작하지 않으면, task 시그니처가 실제 코드와 어긋나서 파이프라인이 통째로 죽은 것처럼 보이는 버그가 생긴다. `watchmedo`(`requirements.txt`의 `watchdog` 패키지)로 감싸서 띄우면 `.py` 파일이 바뀔 때마다 워커를 자동으로 재시작해준다.
 
-### 4. 서버 실행
+### 4. 백엔드 서버 실행
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-브라우저에서 `http://localhost:8000` 접속 → PDF 업로드 → 변환 완료되면 `.gp5` 다운로드.
-
 **주의:** Celery 워커가 떠 있지 않으면 `/convert`는 job을 큐에 넣기만 하고 실제 변환은 영영 시작되지 않는다(`GET /jobs/{id}`가 `queued`에서 안 넘어감).
 
-## Docker로 실행하기
-
-Audiveris의 Linux 릴리스가 **x86_64 전용**이라 이미지는 반드시 `linux/amd64`로 빌드해야 한다(Apple Silicon에서도 에뮬레이션으로 동작).
+### 5. 프론트엔드 실행
 
 ```bash
-docker build --platform linux/amd64 -t gp-converter .
-docker run --rm --platform linux/amd64 -p 8000:8000 gp-converter
+cd frontend
+npm install
+npm run dev
 ```
 
-`http://localhost:8000`에서 동일하게 사용 가능.
+`http://localhost:5173` 접속. Vite dev 서버가 `/convert`, `/jobs`, `/files`, `/auth` 등을 `http://localhost:8000`으로 프록시한다.
 
-## Docker Compose로 실행하기 (프로덕션)
+**이메일+비밀번호로 자체 가입도 가능**하다(Google 계정 없이). `SMTP_*` 환경변수를 안 채워도 가입/로그인 자체는 되지만, 인증메일이 실제로 발송되지 않으므로(로그에만 남음) `/convert`가 계속 403으로 막힌다 — 로컬 개발 중엔 서버 로그에서 인증 링크(`.../auth/verify?token=...`)를 직접 찾아 브라우저로 열면 된다.
 
-단일 컨테이너(`docker run`)와 달리, `redis`(작업큐 브로커) + `web`(FastAPI) + `worker`(Celery) 3개 서비스를 한 번에 띄운다. 프론트엔드 빌드도 `Dockerfile` 안에서 자동으로 처리되므로 `npm run build`를 따로 실행할 필요가 없다.
+## Docker Compose로 실행하기
+
+`redis`(작업큐 브로커) + `web`(FastAPI) + `worker`(Celery) 3개 서비스를 한 번에 띄운다. 프론트엔드 빌드도 `Dockerfile` 안에서 자동으로 처리되므로 `npm run build`를 따로 실행할 필요가 없다.
+
+Audiveris의 Linux 릴리스가 **x86_64 전용**이라 이미지는 반드시 `linux/amd64`로 빌드해야 한다(Apple Silicon에서도 에뮬레이션으로 동작, 느림).
 
 ### 1. 환경변수 파일 준비
 
@@ -135,7 +139,20 @@ docker compose down -v
 - SQLite를 그대로 쓴다 — 단일 노드 전제이며 수평 확장은 지원하지 않는다.
 - Audiveris의 Linux 릴리스가 x86_64 전용이라 `platform: linux/amd64`로 고정돼 있다(Apple Silicon 등에서는 에뮬레이션으로 동작, 느림).
 
-**이메일+비밀번호로 자체 가입도 가능**하다(Google 계정 없이). `SMTP_*` 환경변수를 안 채워도 가입/로그인 자체는 되지만, 인증메일이 실제로 발송되지 않으므로(로그에만 남음) `/convert`가 계속 403으로 막힌다 — 로컬 개발 중엔 서버 로그에서 인증 링크(`.../auth/verify?token=...`)를 직접 찾아 브라우저로 열면 된다.
+## Render로 임시 배포하기
+
+레포 루트의 `render.yaml`(Blueprint)로 render.com에 무료로 임시 데모를 띄울 수 있다.
+
+1. render.com 가입 → **New → Blueprint** → 이 GitHub 레포 연결. `render.yaml`을 자동으로 읽는다.
+2. 최초 생성 시 `sync: false`로 표시된 값(`FRONTEND_URL`, `BACKEND_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_PRO`)을 입력한다. 구글 로그인/결제를 안 쓴다면 아무 문자열이나 채워도 된다 — 코드가 요구하는 건 "값이 비어있지 않은 것"뿐이다. **빈 칸으로 두면 Render가 그 키 자체를 만들지 않아 앱이 부팅 시점에 `KeyError`로 죽는다** — Environment 탭에서 실제로 값이 채워졌는지 꼭 확인한다.
+3. 첫 배포가 끝나면 서비스 페이지에 실제 URL(`https://<서비스명>.onrender.com`)이 뜬다. 그 값으로 `FRONTEND_URL`/`BACKEND_URL`을 다시 설정하고 재배포한다(OAuth 리다이렉트, 이메일 인증/재설정 링크에 필요).
+4. 구글 로그인을 쓰려면 Google Cloud Console에 이 onrender.com URL을 redirect URI로 등록해야 한다. 이메일/비밀번호 로그인은 그 설정 없이도 동작한다.
+
+**왜 web/worker가 컨테이너 하나에 같이 뜨는가:** 이 프로젝트의 job 상태는 파일 기반(`JobStore`, 아래 "알려진 한계" 참고)이라 web과 worker가 디스크를 공유해야 한다. Render 무료 플랜은 영구 디스크를 지원하지 않아 별도 서비스로 나누면 이 공유가 불가능해진다 — 그래서 `render.yaml`은 `start.sh`로 컨테이너 하나 안에서 celery 워커(백그라운드)와 uvicorn(foreground)을 함께 띄운다.
+
+**무료 플랜 한계 (반드시 알아둘 것):**
+- 영구 디스크가 없다. 15분 유휴 후 인스턴스가 재시작되면 컨테이너 파일시스템이 초기화돼 업로드 파일/변환 결과/회원 DB가 전부 날아간다. **진짜 임시 테스트 데모 전용**이며, 데이터를 유지하려면 유료 플랜 + 영구 디스크가 필요하다.
+- RAM이 512MB로 제한된다. Audiveris(JVM)가 이미지 처리 중 이 한도를 쉽게 넘겨서 간단한 PDF도 변환이 OOM으로 실패할 수 있다(`Ran out of memory (used over 512MB)`). 실제 변환 기능을 안정적으로 쓰려면 더 큰 인스턴스로 업그레이드해야 한다.
 
 ## 환경변수
 
@@ -146,6 +163,8 @@ docker compose down -v
 | `GPC_STEP_TIMEOUT_SEC` | `300` | 변환 단계별 타임아웃(초) |
 | `GPC_JOBS_DIR` | `<cwd>/jobs` | job 작업 디렉토리 |
 | `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Celery 브로커(Redis) 주소 |
+| `FRONTEND_URL` | `http://localhost:5173` | 프론트엔드 origin. 이메일 인증/재설정 링크, OAuth 리다이렉트 대상 |
+| `BACKEND_URL` | `http://localhost:8000` | 백엔드 origin. Google OAuth 콜백 URL 조합에 사용 |
 | `STORAGE_BACKEND` | `local` | 파일 저장 백엔드: `local` 또는 `s3` |
 | `S3_BUCKET_NAME` | 없음(s3일 때 필수) | S3 버킷 이름 |
 | `S3_ENDPOINT_URL` | 없음(비우면 AWS) | MinIO/R2 등 비-AWS S3 호환 엔드포인트 |
@@ -174,45 +193,112 @@ docker compose down -v
 ## 테스트
 
 ```bash
-pytest              # 단위/API 테스트 (외부 도구 불필요, 모킹됨)
+# 백엔드
+pytest                 # 단위/API 테스트 (외부 도구 불필요, 모킹됨)
 pytest -m integration  # 실제 Audiveris로 전체 파이프라인 검증 (Audiveris 설치 필요)
+
+# 프론트엔드
+cd frontend && npm test
 ```
 
 ## API
 
+인증(JWT access token)이 필요한 엔드포인트는 별도 표기.
+
 | 엔드포인트 | 설명 |
 |---|---|
-| `POST /convert` | PDF 업로드, `{"job_id": "..."}` 반환 |
+| `POST /convert` | PDF 업로드, `{"job_id": ...}` 반환 (로그인 시 파일이 계정에 귀속됨) |
 | `GET /jobs/{id}` | 변환 상태 조회: `queued` / `running` / `done` / `failed` |
 | `GET /jobs/{id}/result` | 완료된 `.gp5` 다운로드 |
+| `GET /jobs/{id}/stream` | SSE로 변환 진행률 스트리밍 |
+| `GET /auth/google`, `/auth/google/callback` | Google OAuth 로그인 |
+| `POST /auth/register`, `/auth/login` | 이메일/비밀번호 가입·로그인 |
+| `POST /auth/refresh` | refresh_token으로 access token 재발급 |
+| `GET /auth/verify`, `POST /auth/resend-verification` | 이메일 인증 |
+| `POST /auth/forgot-password`, `/auth/reset-password` | 비밀번호 재설정 |
+| `GET /auth/me` 🔒 | 현재 로그인 유저 정보 |
+| `GET /files` 🔒 | 내 파일 목록 |
+| `DELETE /files/{id}` 🔒 | 파일 삭제 |
+| `POST /files/{id}/sync` 🔒 | 에디터에서 수정한 내용을 GP5로 재저장 |
+| `GET /files/{id}/download` 🔒 | GP5 다운로드 |
+| `GET /files/{id}/export/midi` 🔒 | MIDI로 재수출 |
+| `POST /files/{id}/share`, `GET /files/{id}/share`, `DELETE /files/{id}/share` 🔒 | 공유링크 생성/조회/해제 |
+| `GET /files/shared/{token}` | 공유링크로 비로그인 열람 |
+| `POST /billing/checkout`, `/billing/portal` 🔒 | Stripe 결제/구독관리 세션 생성 |
+| `POST /billing/webhook` | Stripe 웹훅 수신 |
+| `GET /billing/usage` 🔒 | 플랜 및 이번 달 사용량 조회 |
+
+## 프론트엔드
+
+React 19 + Vite. 상태관리는 zustand(`authStore`, `editorStore`, `fileStore`), 악보 렌더링/재생은 `@coderline/alphatab`.
+
+```
+frontend/src/
+  App.tsx                 # 라우팅: /login /register /forgot-password /reset-password
+                           #        /auth/callback /(메인 에디터) /share/:token
+  components/
+    Auth/                  # 로그인/가입/비번찾기/OAuth콜백 페이지, 공통 레이아웃
+    Billing/                # 사이드바 내 플랜·사용량 표시, 업그레이드 버튼
+    Editor/                 # ScoreViewer(alphaTab 렌더+재생), EditPanel(음표 수정),
+                           #   StructurePanel(마디구조), TrackPanel, ProgressBar,
+                           #   ExportMenu, ShareModal, SharedScoreViewer(공유뷰)
+    FileManager/           # UploadButton(업로드+SSE 진행률), FileList(내 파일)
+  lib/
+    alphatab.ts            # alphaTab 초기화(폰트/사운드폰트 경로, 재생 커서 스크롤)
+    api.ts                 # fetch 래퍼, 401 시 자동 refresh 후 재시도
+    sse.ts                 # 변환 진행률 SSE 클라이언트
+    scoreApplier/scoreSerializer/scoreTypes/structuralEdit/useSyncFile/pitchPosition.ts
+                           # 에디터 ↔ alphaTab 모델 간 변환 및 편집 로직
+```
+
+빌드는 `npm run build`(`tsc -b && vite build`)로 `../static`에 정적 파일을 생성하며, `Dockerfile`이 이 과정을 자동으로 포함한다.
 
 ## 프로젝트 구조
 
 ```
 app/
-  config.py            # 환경변수 기반 설정
-  jobs.py               # 파일 기반 job 상태 저장소
-  storage.py             # 파일 저장 추상화 (local/S3)
+  config.py              # 환경변수 기반 설정(Settings)
+  database.py             # SQLAlchemy 엔진 + SQLite 마이그레이션
+  models.py               # User/File 등 ORM 모델
+  jobs.py                 # 파일 기반 job 상태 저장소
+  storage.py               # 파일 저장 추상화 (local/S3)
+  email.py                 # SMTP 발송(미설정 시 로그만)
+  auth.py                  # JWT 발급/검증
+  dependencies.py           # FastAPI 의존성(현재 유저, 설정 등)
+  celery_app.py            # Celery 앱 인스턴스 (브로커 설정)
+  tasks.py                 # Celery task(변환, 이메일 발송)
+  worker.py                # 백그라운드 변환 실행
+  main.py                  # FastAPI 앱, /convert /jobs 라우트, 라우터 등록
   pipeline/
-    audiveris.py        # PDF → MusicXML (Audiveris subprocess)
-    musicxml_to_gp.py    # MusicXML → .gp5 (music21 + PyGuitarPro)
-    orchestrator.py       # 위 두 단계를 연결
-  worker.py              # 백그라운드 변환 실행
-  celery_app.py          # Celery 앱 인스턴스 (브로커 설정)
-  tasks.py               # Celery task 래퍼 (process_job 위임)
-  main.py                # FastAPI 앱
-static/
-  index.html             # 업로드/다운로드 프론트엔드
-tests/                   # pytest (단위 + API + 통합)
-spikes/                  # 외부 도구 검증 스크립트
-docs/superpowers/        # 설계 문서 및 구현 계획
+    audiveris.py           # PDF → MusicXML (Audiveris subprocess)
+    tab_reader.py            # 탭보표에서 현/프렛 직접 추출(휴리스틱)
+    omr_tab.py                # 탭보표 OMR 모델 추론(GUITAR_OMR_DIR)
+    musicxml_to_gp.py         # MusicXML → .gp5 (music21 + PyGuitarPro)
+    token_to_gp.py             # 편집된 ScoreSnapshot → .gp5 재작성
+    midi_export.py             # .gp5 → MIDI 재수출
+    orchestrator.py             # 파이프라인 단계 연결
+  routers/
+    auth.py                 # 회원가입/로그인/OAuth/비번재설정
+    files.py                 # 내 파일 목록/삭제
+    edit.py                   # 에디터 변경사항 동기화
+    export.py                  # GP5/MIDI 다운로드
+    share.py                    # 공유링크
+    billing.py                   # Stripe 결제/구독
+    jobs_sse.py                   # 변환 진행률 SSE
+frontend/                        # React 에디터(위 "프론트엔드" 절 참고)
+static/                           # frontend 빌드 산출물 (git에는 없음, 빌드 시 생성)
+tests/                            # pytest (단위 + API + 통합)
+spikes/                           # 외부 도구 검증 스크립트
+docs/superpowers/                 # 설계 문서 및 구현 계획
+PRODUCT.md / DESIGN.md            # 제품 방향성 / 디자인 시스템 문서
+render.yaml / start.sh            # Render 임시 배포용 Blueprint + 기동 스크립트
 ```
 
 ## 알려진 한계
 
 - 탭 인식은 디지털 PDF 한정이며, 표준악보 없이 탭보표만 있는 PDF, 스캔 이미지 탭, 화음(동시발음) 탭, 해머링/슬라이드 등 기법 기호는 지원하지 않는다(`X` 뮤트 표시는 스킵됨). 자세한 한계는 `docs/superpowers/specs/2026-06-24-guitar-tab-recognition-design.md` 참고.
-- Audiveris OMR은 PDF 페이지 수에 비례해 느리다(예: 6페이지 ~7분).
-- **Celery 워커와 웹서버는 반드시 같은 `GPC_JOBS_DIR` 파일시스템을 공유해야 한다.** job 상태는 파일 기반(`JobStore`)이라, 워커를 다른 호스트/컨테이너로 분리 배포하면서 `jobs_dir`를 공유 볼륨으로 마운트하지 않으면 워커가 `store.get(job_id)`에서 `None`을 받아 아무 에러 없이 조용히 리턴한다 — job이 영원히 `queued`로 멈춘다. 이 프로젝트의 `docker-compose.yml`은 `jobs-data` named volume을 `web`/`worker` 양쪽에 마운트해서 이 문제를 실제로 해소한다.
+- Audiveris OMR은 PDF 페이지 수에 비례해 느리다(예: 6페이지 ~7분). 메모리도 페이지 크기/DPI에 비례해 늘어난다(Render 무료 플랜 512MB로는 부족할 수 있음, 위 "Render로 임시 배포하기" 참고).
+- **Celery 워커와 웹서버는 반드시 같은 `GPC_JOBS_DIR` 파일시스템을 공유해야 한다.** job 상태는 파일 기반(`JobStore`)이라, 워커를 다른 호스트/컨테이너로 분리 배포하면서 `jobs_dir`를 공유 볼륨으로 마운트하지 않으면 워커가 `store.get(job_id)`에서 `None`을 받아 아무 에러 없이 조용히 리턴한다 — job이 영원히 `queued`로 멈춘다. `docker-compose.yml`은 `jobs-data` named volume을 `web`/`worker` 양쪽에 마운트해서, `render.yaml`은 두 프로세스를 컨테이너 하나에 같이 띄워서 이 문제를 해소한다.
 - 익명(비로그인) `/convert`도 동일한 Redis 큐에 우선순위 구분 없이 쌓인다 — 무료플랜 사용량 제한은 로그인 유저에게만 적용되고 익명 요청은 우회하므로, 악의적으로 익명 요청을 대량으로 보내면 정상 유저의 job이 큐에서 밀릴 수 있다. 레이트리밋/우선순위 큐는 아직 없음(추후 과제).
 - `STORAGE_BACKEND`을 바꾸면(local↔s3) 이미 저장된 기존 파일은 자동 이관되지 않는다. 필요하면 수동으로 옮겨야 한다.
 - `STORAGE_BACKEND=s3`일 때는 파일 다운로드/공유링크 접근마다 전체 파일을 로컬 임시파일로 내려받은 뒤(`load_to_temp`) 서빙한다(직접 스트리밍 아님). 특히 `GET /files/shared/{token}`는 인증 없이 공개된 엔드포인트라 트래픽이 몰리면 `local` 백엔드 대비 지연/대역폭/로컬 디스크 사용이 늘어난다.
