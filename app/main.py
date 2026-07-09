@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -78,7 +79,10 @@ async def convert(
                        f"파일을 삭제하거나 Pro로 업그레이드하세요.",
             )
 
-    fd, tmp_path = tempfile.mkstemp(prefix="upload_", suffix=".pdf")
+    job = store.create()
+    # 임시파일을 job.workdir 안에 만든다 — /tmp에 만들면 컨테이너 환경에 따라
+    # 별도 마운트라 os.replace()가 "Invalid cross-device link"로 실패할 수 있다.
+    fd, tmp_path = tempfile.mkstemp(prefix="upload_", suffix=".pdf", dir=job.workdir)
     checked_magic = False
     try:
         with os.fdopen(fd, "wb") as out:
@@ -98,10 +102,9 @@ async def convert(
         if not checked_magic:
             raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능")
     except Exception:
-        os.remove(tmp_path)
+        shutil.rmtree(job.workdir, ignore_errors=True)
         raise
 
-    job = store.create()
     pdf_path = os.path.join(job.workdir, "input.pdf")
     os.replace(tmp_path, pdf_path)
 
