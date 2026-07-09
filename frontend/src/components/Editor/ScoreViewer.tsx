@@ -146,7 +146,6 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
         else setSelectionRect(null)
       } catch { setSelectionRect(null) }
     })
-
     // alphaTab의 기본 noteMouseDown은 noteHeadBounds 사각형에 정확히 들어와야만
     // 인식한다(패딩 없음, alphaTab 내부 고정 로직이라 설정으로 못 바꿈). 음표
     // 클릭이 너무 빡빡하다는 피드백이 있어 직접 컨테이너에 클릭 리스너를 달아
@@ -316,6 +315,22 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
           <div style={{ padding: '12px 16px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
             <button onClick={() => apiRef.current?.playPause()} disabled={!loaded} className="btn-primary" style={{ padding: '8px 20px' }}>
               {playing ? '일시정지' : '재생'}
+            </button>
+            <button
+              onClick={() => {
+                const api = apiRef.current
+                if (!api) return
+                // stop()만 호출하면 재생 범위가 선택돼 있을 때 그 범위의 시작으로만
+                // 돌아간다 — 완전히 처음부터 재생하려면 범위 선택도 같이 지운다.
+                api.playbackRange = null
+                api.tickPosition = 0
+                api.play()
+              }}
+              disabled={!loaded}
+              className="btn-ghost"
+              style={{ padding: '8px 16px' }}
+            >
+              ⏮ 처음부터
             </button>
             <ExportMenu
               fileId={fileId}

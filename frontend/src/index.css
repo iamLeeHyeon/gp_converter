@@ -140,3 +140,15 @@ button {
   padding: 20px;
   box-shadow: 0 2px 16px rgba(74, 157, 240, 0.06);
 }
+
+/* alphaTab 재생 커서 — alphaTab은 커서의 위치/애니메이션 로직만 제공하고
+   실제 색상은 비워둔다(기본 배경이 완전 투명이라 커서가 움직여도 화면에
+   전혀 안 보이던 원인이었다). 현재 마디는 옅게, 현재 박자 위치는 또렷한
+   세로선으로 표시한다. */
+.at-cursor-bar {
+  background: rgba(74, 157, 240, 0.12);
+}
+.at-cursor-beat {
+  background: var(--color-primary);
+  width: 3px !important;
+}
