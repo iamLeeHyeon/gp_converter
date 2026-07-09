@@ -42,6 +42,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY --from=frontend-build /static ./static
+COPY start.sh .
+RUN chmod +x start.sh
 
 ENV GPC_JOBS_DIR=/srv/jobs
 EXPOSE 8000
