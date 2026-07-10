@@ -161,6 +161,10 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
 
       const beat = lookup.getBeatAtPos(x, y)
       if (!beat) return
+      // beat이 속한 트랙 — alphaTab은 여러 트랙을 동시에 렌더링하는데, 이전엔
+      // 클릭 위치와 무관하게 항상 0으로 고정돼 있어 트랙 2개 이상인 스코어에서
+      // 클릭한 트랙이 아니라 트랙 0의 같은 위치 음표가 조용히 수정되는 버그가 있었다.
+      const trackIndex = beat.voice.bar.staff.track.index as number
       let note = lookup.getNoteAtPos(beat, x, y)
       const beatBounds = lookup.findBeat(beat)
       if (!note) {
@@ -174,7 +178,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
 
       if (note) {
         const pos: NotePosition = {
-          trackIndex: 0,
+          trackIndex,
           measureIndex: note.beat.voice.bar.index as number,
           voiceIndex: note.beat.voice.index as number,
           beatIndex: note.beat.index as number,
@@ -191,7 +195,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       // 자리에 새 음표를 만들어 선택한다. 추정에 실패하면(탭보 영역 클릭 등)
       // 박자 전체만 선택해서 사이드바의 "+ 화음 음 추가"로 대신하게 한다.
       try {
-        const staff = (apiRef.current?.score as any)?.tracks[0]?.staves[0]
+        const staff = beat.voice.bar.staff
         const samples = collectPitchYSamples(beatBounds)
         const targetPitch = estimatePitchFromY(samples, y)
         const usedStrings = new Set((beat.notes as any[]).map((n) => n.string))
@@ -200,7 +204,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
           beat.addNote(makeNote(target.string, target.fret))
           const newNote = beat.notes[beat.notes.length - 1]
           const pos: NotePosition = {
-            trackIndex: 0,
+            trackIndex,
             measureIndex: beat.voice.bar.index as number,
             voiceIndex: beat.voice.index as number,
             beatIndex: beat.index as number,
@@ -219,7 +223,7 @@ export default function ScoreViewer({ gp5Buffer }: Props) {
       } catch { /* 추정 실패 시 아래에서 박자 전체 선택으로 폴백 */ }
 
       const pos: NotePosition = {
-        trackIndex: 0,
+        trackIndex,
         measureIndex: beat.voice.bar.index as number,
         voiceIndex: beat.voice.index as number,
         beatIndex: beat.index as number,
