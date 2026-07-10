@@ -75,6 +75,13 @@ async def google_callback(request: Request, code: str, state: str = "", db: Sess
 
     user = db.query(User).filter_by(provider="google", provider_id=str(info["id"])).first()
     if not user:
+        existing = db.query(User).filter_by(email=info["email"]).first()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"이미 {existing.provider.capitalize()}로 가입된 이메일입니다. "
+                       f"{existing.provider.capitalize()} 로그인을 사용하세요.",
+            )
         user = User(email=info["email"], provider="google", provider_id=str(info["id"]))
         db.add(user)
         db.commit()
