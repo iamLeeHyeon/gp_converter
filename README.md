@@ -160,7 +160,7 @@ docker compose down -v
 |---|---|---|
 | `GPC_AUDIVERIS_CMD` | `audiveris` | Audiveris 실행 파일 경로 |
 | `GPC_MAX_UPLOAD_BYTES` | `20971520`(20MB) | 업로드 최대 용량 |
-| `GPC_STEP_TIMEOUT_SEC` | `300` | 변환 단계별 타임아웃(초) |
+| `GPC_STEP_TIMEOUT_SEC` | `600` | 변환 단계별 타임아웃(초). 9페이지 악보 실측 기준 Audiveris만 약 340초 걸림 — 여유 있게 잡음 |
 | `GPC_JOBS_DIR` | `<cwd>/jobs` | job 작업 디렉토리 |
 | `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Celery 브로커(Redis) 주소 |
 | `FRONTEND_URL` | `http://localhost:5173` | 프론트엔드 origin. 이메일 인증/재설정 링크, OAuth 리다이렉트 대상 |

@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GPC_")
 
     max_upload_bytes: int = 20 * 1024 * 1024
-    step_timeout_sec: int = 300
+    step_timeout_sec: int = 600
     audiveris_cmd: str = "audiveris"
     jobs_dir: str = "jobs"
 
