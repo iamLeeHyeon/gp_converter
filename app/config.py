@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # GPC_ 접두사 없이 이미 여러 모듈에서 그대로 쓰이던 환경변수 — alias로 접두사 우회
     frontend_url: str = Field("http://localhost:5173", validation_alias="FRONTEND_URL")
-    backend_url: str = Field("http://localhost:8000", validation_alias="BACKEND_URL")
+    backend_url: str = Field("http://localhost:8010", validation_alias="BACKEND_URL")
     celery_broker_url: str = Field("redis://localhost:6379/0", validation_alias="CELERY_BROKER_URL")
 
     @field_validator("jobs_dir")

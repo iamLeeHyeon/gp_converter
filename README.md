@@ -83,7 +83,7 @@ watchmedo auto-restart -d app -p '*.py' --recursive -- celery -A app.tasks:celer
 ### 4. 백엔드 서버 실행
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8010
 ```
 
 **주의:** Celery 워커가 떠 있지 않으면 `/convert`는 job을 큐에 넣기만 하고 실제 변환은 영영 시작되지 않는다(`GET /jobs/{id}`가 `queued`에서 안 넘어감).
@@ -96,7 +96,7 @@ npm install
 npm run dev
 ```
 
-`http://localhost:5173` 접속. Vite dev 서버가 `/convert`, `/jobs`, `/files`, `/auth` 등을 `http://localhost:8000`으로 프록시한다.
+`http://localhost:5173` 접속. Vite dev 서버가 `/convert`, `/jobs`, `/files`, `/auth` 등을 `http://localhost:8010`으로 프록시한다.
 
 **이메일+비밀번호로 자체 가입도 가능**하다(Google 계정 없이). `SMTP_*` 환경변수를 안 채워도 가입/로그인 자체는 되지만, 인증메일이 실제로 발송되지 않으므로(로그에만 남음) `/convert`가 계속 403으로 막힌다 — 로컬 개발 중엔 서버 로그에서 인증 링크(`.../auth/verify?token=...`)를 직접 찾아 브라우저로 열면 된다.
 
