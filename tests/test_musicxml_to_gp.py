@@ -486,6 +486,46 @@ def test_title_defaults_to_empty_when_no_metadata(tmp_path):
     assert song.artist == ""
 
 
+_MIDI_INSTRUMENT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Distortion Guitar</part-name>
+    <score-instrument id="P1-I1"><instrument-name>Distortion Guitar</instrument-name></score-instrument>
+    <midi-instrument id="P1-I1"><midi-channel>1</midi-channel><midi-program>31</midi-program></midi-instrument>
+  </score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_midi_program_propagated_to_gp5_track_instrument(tmp_path):
+    """MusicXML의 <midi-program>이 GP5 트랙 악기 음색에 반영돼야 한다.
+
+    MusicXML은 1-indexed(31=Distortion Guitar), music21/PyGuitarPro는
+    0-indexed(30)라 music21이 이미 -1 변환해준 값을 그대로 쓰면 된다.
+    """
+    xml_path = tmp_path / "midi_instrument.musicxml"
+    xml_path.write_text(_MIDI_INSTRUMENT_XML, encoding="utf-8")
+    out = str(tmp_path / "midi_instrument.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.tracks[0].channel.instrument == 30
+
+
+def test_midi_program_defaults_when_not_specified(tmp_path):
+    """악기 정보 없는 MusicXML은 기존 기본값(어쿠스틱 기타, 25)을 유지해야 한다."""
+    out = str(tmp_path / "no_instrument.gp5")
+    musicxml_to_gp5(FIXTURE, out)
+
+    song = guitarpro.parse(out)
+    assert song.tracks[0].channel.instrument == 25
+
+
 _TIE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>

@@ -975,6 +975,14 @@ def musicxml_to_gp5(
     except Exception:
         logger.warning("곡 메타데이터 추출 실패 — 제목/아티스트 없이 계속 진행", exc_info=True)
 
+    # ponytail: 악기 추출 실패가 전체 변환을 막으면 안 됨. 실패 시 기본값(어쿠스틱 기타) 유지.
+    try:
+        midi_program = score.parts[0].getInstrument().midiProgram
+        if midi_program is not None:
+            song.tracks[0].channel.instrument = midi_program
+    except Exception:
+        logger.warning("악기 정보 추출 실패 — 기본 음색 유지", exc_info=True)
+
     # ponytail: 가사 매핑 실패가 전체 변환을 막으면 안 됨. 실패 시 경고만 남기고 계속 진행.
     try:
         starting_measure, lyrics_text = _collect_lyrics(score)
