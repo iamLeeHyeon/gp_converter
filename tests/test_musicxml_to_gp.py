@@ -149,6 +149,44 @@ def test_dynamics_set_note_velocity_with_carry_forward(tmp_path):
     assert beats[3].notes[0].velocity == 47, "F5: p carry-forward=47"
 
 
+_HAIRPIN_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <direction placement="below"><direction-type><dynamics><mp/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <direction placement="below"><direction-type><wedge type="crescendo" number="1"/></direction-type></direction>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <direction placement="below"><direction-type><wedge type="stop" number="1"/></direction-type></direction>
+      <direction placement="below"><direction-type><dynamics><f/></dynamics></direction-type></direction>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_crescendo_hairpin_interpolates_velocity_toward_target_dynamic(tmp_path):
+    """크레센도 구간의 음표들은 시작(mp=63)에서 도착 다이내믹(f=95)까지
+    선형보간된 velocity를 가져야 한다 — 이전엔 하이핀이 완전히 무시돼
+    도착 다이내믹이 찍히는 순간까지 velocity가 그냥 flat했다."""
+    xml_path = tmp_path / "hairpin.musicxml"
+    xml_path.write_text(_HAIRPIN_XML, encoding="utf-8")
+    out = str(tmp_path / "hairpin.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 4
+    assert beats[0].notes[0].velocity == 63, "C4: mp=63 (하이핀 이전)"
+    assert beats[1].notes[0].velocity == 63, "D4: 하이핀 시작 지점 = 시작값"
+    assert beats[2].notes[0].velocity == 95, "E4: 하이핀 끝 지점 = 도착값(f=95)"
+    assert beats[3].notes[0].velocity == 95, "F4: f=95 (도착 다이내믹 그대로)"
+
+
 def test_empty_musicxml_raises(tmp_path):
     """음표 없는 MusicXML에서 GpConvertError('변환할 음표 없음')를 발생시켜야 한다."""
     empty_xml = tmp_path / "empty.musicxml"

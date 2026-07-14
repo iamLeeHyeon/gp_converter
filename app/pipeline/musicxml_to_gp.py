@@ -294,6 +294,52 @@ def _build_velocity_map(stream_like) -> Dict[float, int]:
     return result
 
 
+def _build_hairpin_velocities(part) -> Dict[int, int]:
+    """크레센도/디미누엔도(hairpin) 구간의 음표들에 velocity를 선형보간한다.
+
+    반환값은 (음표 객체의 id() → velocity) — 오프셋 좌표계(마디 로컬 vs
+    전체 파트) 불일치 문제를 피하려고 객체 identity로 직접 매핑한다.
+
+    시작 velocity는 하이핀이 시작되는 시점까지 유효했던 명시적 다이내믹
+    (없으면 기본 forte=95), 도착 velocity는 하이핀이 끝난 뒤 가장 가까운
+    명시적 다이내믹 마킹이다. 도착 다이내믹이 없으면(목표 크기가 안 적힌
+    하이핀) 보간 근거가 없어 건너뛴다 — 기존처럼 flat하게 남는다.
+    """
+    all_notes = list(part.recurse().getElementsByClass((m21note.Note, m21chord.Chord)))
+    offsets = [float(n.getOffsetInHierarchy(part)) for n in all_notes]
+
+    dynamics_by_offset: Dict[float, int] = {}
+    for el in part.recurse().getElementsByClass(m21dyn.Dynamic):
+        v = _DYNAMIC_VELOCITY.get(el.value)
+        if v is not None:
+            dynamics_by_offset[float(el.getOffsetInHierarchy(part))] = v
+
+    result: Dict[int, int] = {}
+    for wedge in part.recurse().getElementsByClass(m21dyn.DynamicWedge):
+        first, last = wedge.getFirst(), wedge.getLast()
+        if first is None or last is None:
+            continue
+        start_offset = float(first.getOffsetInHierarchy(part))
+        end_offset = float(last.getOffsetInHierarchy(part))
+        if end_offset <= start_offset:
+            continue
+
+        prior = [o for o in dynamics_by_offset if o <= start_offset]
+        start_v = dynamics_by_offset[max(prior)] if prior else 95
+
+        after = [o for o in dynamics_by_offset if o >= end_offset]
+        if not after:
+            continue
+        end_v = dynamics_by_offset[min(after)]
+
+        span = end_offset - start_offset
+        for n, off in zip(all_notes, offsets):
+            if start_offset <= off <= end_offset:
+                frac = (off - start_offset) / span
+                result[id(n)] = round(start_v + (end_v - start_v) * frac)
+    return result
+
+
 def _ql_to_gp_duration(ql: float) -> Tuple[int, bool]:
     """quarterLength → (GP Duration.value, isDotted).
 
@@ -332,6 +378,7 @@ def _extract_events(
     stream_like,
     initial_velocity: Optional[int] = None,
     technicals: Optional[Dict[int, Dict[str, Optional[float]]]] = None,
+    hairpin_velocities: Optional[Dict[int, int]] = None,
 ) -> List[NoteEvent]:
     """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다.
 
@@ -339,6 +386,8 @@ def _extract_events(
     기본값 사용). 마디 간 carry-forward는 _collect_notes에서 처리한다.
     technicals: raw XML에서 스캔한 (순번 → {'bend': 반음수, 'palm_mute': None})
     매핑(_scan_raw_technicals 참고). None이면 벤드/팜뮤트 없음으로 처리.
+    hairpin_velocities: 크레센도/디미누엔도 구간 보간값((id(음표) → velocity),
+    _build_hairpin_velocities 참고). 명시적 다이내믹보다 우선 적용한다.
     """
     events: List[NoteEvent] = []
     ordinal = 0
@@ -354,6 +403,10 @@ def _extract_events(
                 current_velocity = vel_map[off]
             else:
                 break
+        if hairpin_velocities is not None:
+            hairpin_v = hairpin_velocities.get(id(n))
+            if hairpin_v is not None:
+                current_velocity = hairpin_v
         # 그레이스노트는 NoteEvent로 만들지 않고, 다음 일반음에 첨부한다.
         if isinstance(n, m21note.Note) and n.duration.isGrace:
             grace_midi = n.pitch.midi + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
@@ -580,6 +633,11 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
     except Exception:
         logger.warning("벤드/팜뮤트 raw XML 스캔 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
         raw_technicals = {}
+    try:
+        hairpin_velocities = _build_hairpin_velocities(part)
+    except Exception:
+        logger.warning("크레센도/디미누엔도 보간 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
+        hairpin_velocities = {}
     measures = list(part.getElementsByClass(m21stream.Measure))
 
     repeat_alt_by_measure: Dict[int, int] = {}
@@ -637,6 +695,7 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
                         for (mnum, vidx, ordinal), marks in raw_technicals.items()
                         if mnum == m.number and vidx == voice_index
                     },
+                    hairpin_velocities=hairpin_velocities,
                 ),
                 expected_ql,
             )
