@@ -1422,6 +1422,39 @@ def test_repeat_and_volta_mapped_to_gp5_measure_headers(tmp_path):
     assert measures[2].header.repeatAlternative == 0b10, "2번 엔딩 → bit1"
 
 
+_DC_AL_FINE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <direction placement="above"><direction-type><coda/></direction-type></direction>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="above"><direction-type><words>D.C. al Fine</words></direction-type></direction>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_coda_and_da_capo_al_fine_mapped_to_gp5_directions(tmp_path):
+    """<coda/> 심볼과 "D.C. al Fine" 텍스트가 각각 GP5 direction/fromDirection에
+    반영돼야 한다 — 이전엔 이런 곡 구조 지시가 전부 무시돼 사라졌었다."""
+    xml_path = tmp_path / "dc_al_fine.musicxml"
+    xml_path.write_text(_DC_AL_FINE_XML, encoding="utf-8")
+    out = str(tmp_path / "dc_al_fine.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    measures = song.tracks[0].measures
+
+    assert measures[0].header.direction == guitarpro.DirectionSign('Coda')
+    assert measures[1].header.fromDirection == guitarpro.DirectionSign('Da Capo al Fine')
+
+
 _CHORD_SYMBOL_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>

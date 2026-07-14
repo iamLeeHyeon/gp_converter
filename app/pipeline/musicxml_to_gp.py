@@ -54,7 +54,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, bar as m21bar, harmony as m21harmony, expressions as m21expr, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn, tempo as m21tempo
+from music21 import converter, bar as m21bar, harmony as m21harmony, expressions as m21expr, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn, tempo as m21tempo, repeat as m21repeat
 
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,24 @@ _FIFTHS_TO_KEYSIG = {
     8: gpm.KeySignature.GMajorSharp,
 }
 
+# 곡 구조 표지: 목표 지점(Coda/Segno/Fine)은 MeasureHeader.direction,
+# 점프 지시(D.C./D.S. 등)는 fromDirection에 대응한다. GP5가 지원하는
+# 이름 문자열 그대로 매핑(guitarpro.gp5.writeDirections 참고). AlSegno는
+# GP5 fromDirection 목록에 대응하는 항목이 없어 제외.
+_REPEAT_MARKER_TO_GP = {
+    m21repeat.Coda: 'Coda',
+    m21repeat.Segno: 'Segno',
+    m21repeat.Fine: 'Fine',
+}
+_REPEAT_COMMAND_TO_GP = {
+    m21repeat.DaCapo: 'Da Capo',
+    m21repeat.DaCapoAlFine: 'Da Capo al Fine',
+    m21repeat.DaCapoAlCoda: 'Da Capo al Coda',
+    m21repeat.DalSegno: 'Da Segno',
+    m21repeat.DalSegnoAlFine: 'Da Segno al Fine',
+    m21repeat.DalSegnoAlCoda: 'Da Segno al Coda',
+}
+
 
 @dataclass
 class NoteEvent:
@@ -179,6 +197,8 @@ class MeasureData:
     repeat_close: int = -1
     repeat_alternative: int = 0
     chord_name: Optional[str] = None
+    direction: Optional[str] = None  # 'Coda'|'Segno'|'Fine' 등 (GP MeasureHeader.direction)
+    from_direction: Optional[str] = None  # 'Da Capo'|'Da Segno al Coda' 등 (GP fromDirection)
 
 
 def _midi_to_string_fret(
@@ -594,6 +614,17 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
         chord_syms = list(m.recurse().getElementsByClass(m21harmony.ChordSymbol))
         chord_name = chord_syms[0].figure if chord_syms else None
 
+        direction = None
+        for rm in m.recurse().getElementsByClass(m21repeat.RepeatExpressionMarker):
+            direction = _REPEAT_MARKER_TO_GP.get(type(rm))
+            if direction:
+                break
+        from_direction = None
+        for rc in m.recurse().getElementsByClass(m21repeat.RepeatExpressionCommand):
+            from_direction = _REPEAT_COMMAND_TO_GP.get(type(rc))
+            if from_direction:
+                break
+
         expected_ql = numerator * 4.0 / denominator
         voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
         voices_events = [
@@ -622,6 +653,8 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
             repeat_close=repeat_close,
             repeat_alternative=repeat_alternative,
             chord_name=chord_name,
+            direction=direction,
+            from_direction=from_direction,
         ))
 
     # 곡 전체에서 2번째 보이스가 단 한 마디라도 쓰였다면, 그 보이스를 안 쓰는
@@ -684,6 +717,10 @@ def _build_song(
         mh.isRepeatOpen = md.is_repeat_open
         mh.repeatClose = md.repeat_close
         mh.repeatAlternative = md.repeat_alternative
+        if md.direction:
+            mh.direction = gpm.DirectionSign(md.direction)
+        if md.from_direction:
+            mh.fromDirection = gpm.DirectionSign(md.from_direction)
 
     def _fill_voice(
         voice: gpm.Voice, events: List[NoteEvent], use_hints: bool,
