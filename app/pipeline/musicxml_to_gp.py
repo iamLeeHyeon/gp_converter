@@ -159,6 +159,7 @@ class NoteEvent:
     tremolo_picking: Optional[int] = None  # music21 Tremolo.numberOfMarks(1|2|3)
     harmonic: Optional[str] = None  # 'natural' | 'artificial' (music21 Harmonic.harmonicType)
     bend: Optional[float] = None  # <bend-alter> 반음(semitone) 값. None이면 벤드 없음
+    slide: bool = False  # <slide>/<glissando> 시작 음표면 True → NoteEffect.slides
     palm_mute: bool = False
 
 
@@ -375,6 +376,16 @@ def _extract_events(
                     harmonic = art.harmonicType
                     break
 
+        # <slide>/<glissando>는 music21이 Glissando 스패너로 파싱한다(라인타입만
+        # 다름). 슬라이드가 시작되는 음표(getFirst())에만 표시한다 — 도착
+        # 음표에 또 붙이면 그쪽에서도 슬라이드가 나가는 것처럼 보인다.
+        slide = False
+        if not isinstance(n, m21chord.Chord):
+            for gl in n.getSpannerSites(m21spanner.Glissando):
+                if gl.getFirst() is n:
+                    slide = True
+                    break
+
         marks = technicals.get(ordinal, {}) if technicals else {}
         bend = marks.get("bend")
         palm_mute = "palm_mute" in marks
@@ -407,7 +418,7 @@ def _extract_events(
             grace = (grace_midi, transition)
             pending_grace = None
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute, slide=slide))
     return events
 
 
@@ -786,6 +797,8 @@ def _build_song(
                 )
             if ev.palm_mute:
                 gnote.effect.palmMute = True
+            if ev.slide:
+                gnote.effect.slides = [gpm.SlideType.shiftSlideTo]
             if ev.grace is not None and len(ev.pitches) == 1:
                 grace_midi, transition_name = ev.grace
                 sf_grace = _midi_to_string_fret(grace_midi, strings)

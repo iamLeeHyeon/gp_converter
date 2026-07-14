@@ -1344,6 +1344,44 @@ def test_grace_notes_set_hammer_or_slide_transition(tmp_path):
     assert grace1.transition == guitarpro.GraceEffectTransition.slide, "내림→slide"
 
 
+_SLIDE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <notations><slide type="start" number="1"/></notations>
+      </note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <notations><slide type="stop" number="1"/></notations>
+      </note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_slide_marks_origin_note_not_destination(tmp_path):
+    """표준악보의 <slide>가 GP5에 반영돼야 한다 — 시작 음표에만 slides가
+    붙고 도착 음표에는 안 붙어야 한다(지금까지는 표준악보 경로에 슬라이드
+    파싱 자체가 없어서 조용히 사라졌었다)."""
+    xml_path = tmp_path / "slide.musicxml"
+    xml_path.write_text(_SLIDE_XML, encoding="utf-8")
+    out = str(tmp_path / "slide.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 3
+
+    origin, dest, other = beats[0].notes[0], beats[1].notes[0], beats[2].notes[0]
+    assert origin.effect.slides == [guitarpro.SlideType.shiftSlideTo]
+    assert dest.effect.slides == []
+    assert other.effect.slides == []
+
+
 _REPEAT_VOLTA_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
