@@ -963,6 +963,18 @@ def musicxml_to_gp5(
     except Exception:
         logger.warning("템포 추출 실패 — 기본값(120bpm) 유지", exc_info=True)
 
+    # ponytail: 메타데이터 추출 실패가 전체 변환을 막으면 안 됨. 실패 시 빈 값 유지.
+    # music21은 <identification><creator type="composer">가 없어도 자체 기본값
+    # "Music21"을 composer로 채워 넣는다(알려진 동작) — 그대로 쓰면 작곡가 정보
+    # 없는 곡마다 엉뚱하게 "Music21"이 아티스트로 찍히므로 걸러낸다.
+    try:
+        if score.metadata is not None:
+            song.title = score.metadata.title or ''
+            composer = score.metadata.composer or ''
+            song.artist = composer if composer != 'Music21' else ''
+    except Exception:
+        logger.warning("곡 메타데이터 추출 실패 — 제목/아티스트 없이 계속 진행", exc_info=True)
+
     # ponytail: 가사 매핑 실패가 전체 변환을 막으면 안 됨. 실패 시 경고만 남기고 계속 진행.
     try:
         starting_measure, lyrics_text = _collect_lyrics(score)

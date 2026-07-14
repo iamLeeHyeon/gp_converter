@@ -449,6 +449,43 @@ def test_tempo_defaults_to_120_when_no_marking(tmp_path):
     assert song.tempo == 120
 
 
+_METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <work><work-title>My Song</work-title></work>
+  <identification><creator type="composer">Jane Doe</creator></identification>
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_title_and_composer_propagated_to_gp5(tmp_path):
+    """MusicXML의 곡 제목/작곡가가 GP5 title/artist에 반영돼야 한다."""
+    xml_path = tmp_path / "metadata.musicxml"
+    xml_path.write_text(_METADATA_XML, encoding="utf-8")
+    out = str(tmp_path / "metadata.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.title == "My Song"
+    assert song.artist == "Jane Doe"
+
+
+def test_title_defaults_to_empty_when_no_metadata(tmp_path):
+    """메타데이터 없는 MusicXML은 기존처럼 빈 제목/아티스트를 유지해야 한다."""
+    out = str(tmp_path / "no_metadata.gp5")
+    musicxml_to_gp5(FIXTURE, out)
+
+    song = guitarpro.parse(out)
+    assert song.title == ""
+    assert song.artist == ""
+
+
 _TIE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>
