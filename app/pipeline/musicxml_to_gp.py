@@ -54,7 +54,7 @@ import guitarpro
 import guitarpro.models as gpm
 from guitarpro import Beat, Note, NoteType
 from guitarpro.models import BeatStatus
-from music21 import converter, bar as m21bar, harmony as m21harmony, expressions as m21expr, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn
+from music21 import converter, bar as m21bar, harmony as m21harmony, expressions as m21expr, note as m21note, chord as m21chord, stream as m21stream, spanner as m21spanner, articulations as m21art, dynamics as m21dyn, tempo as m21tempo
 
 
 logger = logging.getLogger(__name__)
@@ -433,6 +433,21 @@ def _drop_phantom_leading_rest(events: List[NoteEvent], expected_ql: float) -> L
         )
         return events[1:]
     return events
+
+
+def _extract_tempo(score) -> Optional[int]:
+    """악보 최초 템포 마킹(BPM)을 4분음표 기준으로 환산해 반환한다.
+
+    referent가 4분음표가 아닌 마킹(예: 점4분음표=76)도 getQuarterBPM()으로
+    정규화한다. 마킹이 없으면 None(호출부가 PyGuitarPro 기본값 120을 유지).
+    """
+    marks = score.flatten().getElementsByClass(m21tempo.MetronomeMark)
+    if not marks:
+        return None
+    bpm = marks[0].getQuarterBPM()
+    if not bpm or bpm <= 0:
+        return None
+    return round(bpm)
 
 
 def _collect_lyrics(score) -> Tuple[Optional[int], str]:
@@ -881,6 +896,14 @@ def musicxml_to_gp5(
         song = _build_song(measures_data, tab_hints=tab_hints)
     except Exception as e:
         raise GpConvertError("GP5 쓰기 실패") from e
+
+    # ponytail: 템포 추출 실패가 전체 변환을 막으면 안 됨. 실패 시 기본값(120) 유지.
+    try:
+        tempo = _extract_tempo(score)
+        if tempo is not None:
+            song.tempo = tempo
+    except Exception:
+        logger.warning("템포 추출 실패 — 기본값(120bpm) 유지", exc_info=True)
 
     # ponytail: 가사 매핑 실패가 전체 변환을 막으면 안 됨. 실패 시 경고만 남기고 계속 진행.
     try:

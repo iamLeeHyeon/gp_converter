@@ -400,6 +400,55 @@ def test_key_signature_propagated_to_gp5(tmp_path):
     assert track.measures[0].keySignature == guitarpro.KeySignature.DMajor
 
 
+_TEMPO_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <direction placement="above">
+        <direction-type>
+          <metronome><beat-unit>quarter</beat-unit><per-minute>140</per-minute></metronome>
+        </direction-type>
+        <sound tempo="140"/>
+      </direction>
+      <note><pitch><step>C</step><octave>4</octave></pitch>
+        <duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_tempo_marking_propagated_to_gp5(tmp_path):
+    """MusicXML의 템포 마킹(BPM)이 GP5 Song.tempo에 반영돼야 한다.
+
+    지금까지는 이걸 안 읽어서 변환된 모든 곡이 무조건 기본값 120bpm으로
+    재생됐다 — 원곡 템포와 무관하게.
+    """
+    xml_path = tmp_path / "tempo.musicxml"
+    xml_path.write_text(_TEMPO_XML, encoding="utf-8")
+    out = str(tmp_path / "tempo.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.tempo == 140
+
+
+def test_tempo_defaults_to_120_when_no_marking(tmp_path):
+    """템포 마킹이 없는 MusicXML은 기존처럼 기본값 120을 유지해야 한다."""
+    out = str(tmp_path / "no_tempo.gp5")
+    musicxml_to_gp5(FIXTURE, out)
+
+    song = guitarpro.parse(out)
+    assert song.tempo == 120
+
+
 _TIE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>
