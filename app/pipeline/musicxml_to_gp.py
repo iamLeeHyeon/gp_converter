@@ -158,7 +158,7 @@ class NoteEvent:
     grace: Optional[Tuple[int, str]] = None
     tremolo_picking: Optional[int] = None  # music21 Tremolo.numberOfMarks(1|2|3)
     harmonic: Optional[str] = None  # 'natural' | 'artificial' (music21 Harmonic.harmonicType)
-    bend: bool = False
+    bend: Optional[float] = None  # <bend-alter> 반음(semitone) 값. None이면 벤드 없음
     palm_mute: bool = False
 
 
@@ -310,14 +310,14 @@ def _is_tied(tie) -> bool:
 def _extract_events(
     stream_like,
     initial_velocity: Optional[int] = None,
-    technicals: Optional[Dict[int, Set[str]]] = None,
+    technicals: Optional[Dict[int, Dict[str, Optional[float]]]] = None,
 ) -> List[NoteEvent]:
     """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다.
 
     initial_velocity: 이전 마디에서 이어지는 velocity 초기값(없으면 None=
     기본값 사용). 마디 간 carry-forward는 _collect_notes에서 처리한다.
-    technicals: raw XML에서 스캔한 (순번 → {'bend','palm_mute'}) 매핑
-    (_scan_raw_technicals 참고). None이면 벤드/팜뮤트 없음으로 처리.
+    technicals: raw XML에서 스캔한 (순번 → {'bend': 반음수, 'palm_mute': None})
+    매핑(_scan_raw_technicals 참고). None이면 벤드/팜뮤트 없음으로 처리.
     """
     events: List[NoteEvent] = []
     ordinal = 0
@@ -375,8 +375,8 @@ def _extract_events(
                     harmonic = art.harmonicType
                     break
 
-        marks = technicals.get(ordinal, set()) if technicals else set()
-        bend = "bend" in marks
+        marks = technicals.get(ordinal, {}) if technicals else {}
+        bend = marks.get("bend")
         palm_mute = "palm_mute" in marks
         ordinal += 1
 
@@ -475,10 +475,13 @@ def _collect_lyrics(score) -> Tuple[Optional[int], str]:
     return starting_measure, " ".join(tokens)
 
 
-def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Set[str]]:
+def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, Optional[float]]]:
     """원본 MusicXML을 병행 파싱해 (마디, 보이스, 순번)별 벤드/팜뮤트 표기를 찾는다.
 
     music21이 <bend>/<palm-mute>를 파싱하지 않아서 raw XML을 직접 훑는다.
+    "bend" 키의 값은 <bend-alter>(반음 수, 없으면 2.0=1음 벤드로 가정) —
+    PyGuitarPro의 BendPoint.value도 동일하게 반음 단위라 그대로 옮겨쓸 수 있다.
+    "palm_mute" 키는 값이 의미 없어 None으로 둔다.
 
     ponytail: 이건 "raw XML과 music21 스트림이 같은 순서로 노트를 센다"는
     가정에 기댄 best-effort 상관관계다. 화음/보이스가 복잡하게 얽히면
@@ -488,7 +491,7 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Set[str]]:
     쉼표·화음 연속음(<chord/>)·꾸밈음(<grace/>)은 순번에서 제외한다
     (_extract_events가 이들을 건너뛰거나 따로 처리하는 것과 동일하게 유지).
     """
-    result: Dict[Tuple[int, int, int], Set[str]] = {}
+    result: Dict[Tuple[int, int, int], Dict[str, Optional[float]]] = {}
     tree = ET.parse(xml_path)
     root = tree.getroot()
     for part in root.findall("part"):
@@ -510,13 +513,18 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Set[str]]:
                 ordinal = ordinals.get(voice_text, 0)
                 ordinals[voice_text] = ordinal + 1
 
-                marks: Set[str] = set()
+                marks: Dict[str, Optional[float]] = {}
                 technical = note.find("notations/technical")
                 if technical is not None:
-                    if technical.find("bend") is not None:
-                        marks.add("bend")
+                    bend_el = technical.find("bend")
+                    if bend_el is not None:
+                        alter_text = bend_el.findtext("bend-alter")
+                        try:
+                            marks["bend"] = float(alter_text) if alter_text else 2.0
+                        except ValueError:
+                            marks["bend"] = 2.0
                     if technical.find("palm-mute") is not None:
-                        marks.add("palm_mute")
+                        marks["palm_mute"] = None
                 if marks:
                     result[(measure_number, voice_index, ordinal)] = marks
     return result
@@ -771,10 +779,10 @@ def _build_song(
                 gnote.effect.harmonic = gpm.NaturalHarmonic()
             elif ev.harmonic == "artificial":
                 gnote.effect.harmonic = gpm.ArtificialHarmonic()
-            if ev.bend:
+            if ev.bend is not None:
                 gnote.effect.bend = gpm.BendEffect(
                     type=gpm.BendType.bend,
-                    points=[gpm.BendPoint(0, 0), gpm.BendPoint(12, 2)],
+                    points=[gpm.BendPoint(0, 0), gpm.BendPoint(12, round(ev.bend))],
                 )
             if ev.palm_mute:
                 gnote.effect.palmMute = True

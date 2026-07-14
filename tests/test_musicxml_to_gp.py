@@ -1614,10 +1614,10 @@ def test_scan_raw_technicals_finds_bend_and_palm_mute_by_ordinal(tmp_path):
 
     result = _scan_raw_technicals(str(xml_path))
 
-    # 순번: C(0)=bend, [쉼표는 순번 안 씀], D(1)=palm_mute, E(2)=없음
+    # 순번: C(0)=bend(2반음), [쉼표는 순번 안 씀], D(1)=palm_mute, E(2)=없음
     assert result == {
-        (1, 0, 0): {"bend"},
-        (1, 0, 1): {"palm_mute"},
+        (1, 0, 0): {"bend": 2.0},
+        (1, 0, 1): {"palm_mute": None},
     }
 
 
@@ -1656,6 +1656,34 @@ def test_bend_and_palm_mute_mapped_via_raw_xml_correlation(tmp_path):
     assert note0.effect.palmMute is False
     assert note1.effect.palmMute is True
     assert note1.effect.bend is None
+
+
+def test_bend_alter_value_propagated_not_hardcoded(tmp_path):
+    """<bend-alter>가 1(반음)이면 GP5 벤드도 반음이어야 한다 — 이전엔 값과
+    무관하게 항상 2반음(1음) 고정 모양이었다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><technical><bend><bend-alter>1</bend-alter></bend></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "bend_alter.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "bend_alter.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beat = next(b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes)
+    note = beat.notes[0]
+    assert note.effect.bend is not None
+    assert note.effect.bend.points[-1].value == 1
 
 
 def test_scan_raw_technicals_failure_does_not_fail_entire_conversion(tmp_path):
