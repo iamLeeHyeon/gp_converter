@@ -179,6 +179,8 @@ class NoteEvent:
     bend: Optional[float] = None  # <bend-alter> 반음(semitone) 값. None이면 벤드 없음
     slide: bool = False  # <slide>/<glissando> 시작 음표면 True → NoteEffect.slides
     palm_mute: bool = False
+    vibrato: bool = False  # <notations><technical><vibrato/>
+    trill_alt_midi: Optional[int] = None  # <trill-mark> 대체음(사운딩 MIDI). None이면 트릴 없음
 
 
 @dataclass
@@ -459,9 +461,24 @@ def _extract_events(
                     slide = True
                     break
 
+        # <trill-mark>는 music21이 Trill expression으로 파싱한다. realize()가
+        # 현재 조표(key)를 반영해 온음/반음을 알맞게 판단한 대체음을 준다 —
+        # (main, alt, main, alt...) 시퀀스의 두 번째 음이 대체음이다.
+        trill_alt_midi = None
+        if not isinstance(n, m21chord.Chord):
+            for expr in n.expressions:
+                if isinstance(expr, m21expr.Trill):
+                    try:
+                        realized = expr.realize(n)
+                        trill_alt_midi = realized[0][1].pitch.midi + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
+                    except Exception:
+                        logger.warning("트릴 대체음 계산 실패 — 트릴 없이 계속 진행", exc_info=True)
+                    break
+
         marks = technicals.get(ordinal, {}) if technicals else {}
         bend = marks.get("bend")
         palm_mute = "palm_mute" in marks
+        vibrato = "vibrato" in marks
         ordinal += 1
 
         # 잇단음 감지
@@ -491,7 +508,7 @@ def _extract_events(
             grace = (grace_midi, transition)
             pending_grace = None
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute, slide=slide))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute, slide=slide, vibrato=vibrato, trill_alt_midi=trill_alt_midi))
     return events
 
 
@@ -560,12 +577,12 @@ def _collect_lyrics(score) -> Tuple[Optional[int], str]:
 
 
 def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, Optional[float]]]:
-    """원본 MusicXML을 병행 파싱해 (마디, 보이스, 순번)별 벤드/팜뮤트 표기를 찾는다.
+    """원본 MusicXML을 병행 파싱해 (마디, 보이스, 순번)별 벤드/팜뮤트/비브라토 표기를 찾는다.
 
-    music21이 <bend>/<palm-mute>를 파싱하지 않아서 raw XML을 직접 훑는다.
+    music21이 <bend>/<palm-mute>/<vibrato>를 파싱하지 않아서 raw XML을 직접 훑는다.
     "bend" 키의 값은 <bend-alter>(반음 수, 없으면 2.0=1음 벤드로 가정) —
     PyGuitarPro의 BendPoint.value도 동일하게 반음 단위라 그대로 옮겨쓸 수 있다.
-    "palm_mute" 키는 값이 의미 없어 None으로 둔다.
+    "palm_mute"/"vibrato" 키는 값이 의미 없어 None으로 둔다.
 
     ponytail: 이건 "raw XML과 music21 스트림이 같은 순서로 노트를 센다"는
     가정에 기댄 best-effort 상관관계다. 화음/보이스가 복잡하게 얽히면
@@ -609,6 +626,8 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, 
                             marks["bend"] = 2.0
                     if technical.find("palm-mute") is not None:
                         marks["palm_mute"] = None
+                    if technical.find("vibrato") is not None:
+                        marks["vibrato"] = None
                 if marks:
                     result[(measure_number, voice_index, ordinal)] = marks
     return result
@@ -631,7 +650,7 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
     try:
         raw_technicals = _scan_raw_technicals(xml_path)
     except Exception:
-        logger.warning("벤드/팜뮤트 raw XML 스캔 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
+        logger.warning("벤드/팜뮤트/비브라토 raw XML 스캔 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
         raw_technicals = {}
     try:
         hairpin_velocities = _build_hairpin_velocities(part)
@@ -895,6 +914,17 @@ def _build_song(
                 gnote.effect.palmMute = True
             if ev.slide:
                 gnote.effect.slides = [gpm.SlideType.shiftSlideTo]
+            if ev.vibrato:
+                gnote.effect.vibrato = True
+            if ev.trill_alt_midi is not None:
+                trill_fret = ev.trill_alt_midi - dict(strings)[snum]
+                if 0 <= trill_fret <= 24:
+                    # duration은 GP5가 지원하는 트릴 속도 프리셋(16분음표/32분음표/
+                    # 64분음표)이어야 한다 — 기본값(4분음표)은 GP5가 못 써서 쓰기
+                    # 단계에서 조용히 깨진다.
+                    gnote.effect.trill = gpm.TrillEffect(
+                        fret=trill_fret, duration=gpm.Duration(value=gpm.Duration.sixteenth),
+                    )
             if ev.grace is not None and len(ev.pitches) == 1:
                 grace_midi, transition_name = ev.grace
                 sf_grace = _midi_to_string_fret(grace_midi, strings)

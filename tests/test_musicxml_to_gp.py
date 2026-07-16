@@ -1872,6 +1872,67 @@ def test_bend_alter_value_propagated_not_hardcoded(tmp_path):
     assert note.effect.bend.points[-1].value == 1
 
 
+def test_vibrato_mapped_via_raw_xml_scan(tmp_path):
+    """<notations><technical><vibrato/>가 GP5 NoteEffect.vibrato로 반영돼야 한다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><type>half</type>
+        <notations><technical><vibrato/></technical></notations>
+      </note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "vibrato.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "vibrato.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 2
+    assert beats[0].notes[0].effect.vibrato is True
+    assert beats[1].notes[0].effect.vibrato is False
+
+
+def test_trill_mark_resolves_key_aware_alt_pitch_to_fret_offset(tmp_path):
+    """<trill-mark>가 조표를 반영한 대체음(온음/반음)의 프렛 오프셋으로
+    GP5 TrillEffect에 반영돼야 한다 — 이전엔 트릴이 완전히 무시됐다.
+
+    C장조에서 C의 온음 위 이웃음은 D(2프렛 위) — 어떤 현에 배정되든
+    트릴 프렛은 항상 main_fret + 2여야 한다.
+    """
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+      <key><fifths>0</fifths></key></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><ornaments><trill-mark/></ornaments></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "trill.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "trill.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beat = next(b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes)
+    note = beat.notes[0]
+    assert note.effect.trill is not None
+    assert note.effect.trill.fret == note.value + 2, "C 위 온음 이웃음 D = 2프렛 위"
+
+
 def test_scan_raw_technicals_failure_does_not_fail_entire_conversion(tmp_path):
     """_scan_raw_technicals가 예외를 던져도 변환 전체가 실패하면 안 되고, GP5가 정상 생성돼야 한다."""
     out = str(tmp_path / "out.gp5")
