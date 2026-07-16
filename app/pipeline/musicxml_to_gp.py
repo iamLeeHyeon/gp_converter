@@ -47,6 +47,7 @@ from __future__ import annotations
 import logging
 import os
 import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -631,6 +632,26 @@ def _collect_lyrics(score) -> Tuple[Optional[int], str]:
     return starting_measure, " ".join(tokens)
 
 
+def _read_xml_root(xml_path: str) -> ET.Element:
+    """일반 .musicxml/.xml과 압축된 .mxl(zip 컨테이너) 둘 다 지원해서 루트를 반환한다.
+
+    Audiveris는 기본적으로 .mxl(zip)로 내보내는데(pdf_to_musicxml이 .mxl을
+    .xml보다 우선 선택), .mxl은 XML이 아니라 zip이라 ET.parse에 그대로
+    넘기면 "not well-formed" 파싱 에러가 난다 — 실사용 입력 대부분에서
+    _scan_raw_technicals가 항상 조용히 실패하고 있었다(예외는 호출부에서
+    잡아 변환 자체는 안 죽지만, 벤드/팜뮤트/비브라토 감지가 통째로 빠짐).
+    """
+    if xml_path.endswith(".mxl"):
+        with zipfile.ZipFile(xml_path) as zf:
+            container = ET.fromstring(zf.read("META-INF/container.xml"))
+            rootfile_el = container.find(".//rootfile")
+            rootfile = rootfile_el.get("full-path") if rootfile_el is not None else None
+            if not rootfile:
+                raise ValueError(f".mxl 컨테이너에서 rootfile을 못 찾음: {xml_path}")
+            return ET.fromstring(zf.read(rootfile))
+    return ET.parse(xml_path).getroot()
+
+
 def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, Optional[float]]]:
     """원본 MusicXML을 병행 파싱해 (마디, 보이스, 순번)별 벤드/팜뮤트/비브라토 표기를 찾는다.
 
@@ -648,8 +669,7 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, 
     (_extract_events가 이들을 건너뛰거나 따로 처리하는 것과 동일하게 유지).
     """
     result: Dict[Tuple[int, int, int], Dict[str, Optional[float]]] = {}
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
+    root = _read_xml_root(xml_path)
     for part in root.findall("part"):
         for measure in part.findall("measure"):
             measure_number = int(measure.get("number"))

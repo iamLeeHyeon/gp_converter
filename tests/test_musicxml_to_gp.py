@@ -1850,6 +1850,39 @@ def test_scan_raw_technicals_finds_bend_and_palm_mute_by_ordinal(tmp_path):
     }
 
 
+def test_scan_raw_technicals_reads_mxl_zip_container(tmp_path):
+    """Audiveris가 실제로 내보내는 .mxl(zip 컨테이너) 입력에서도 벤드를 찾아야
+    한다 — .mxl은 XML이 아니라 zip이라 ET.parse에 그대로 넘기면
+    "not well-formed" 파싱 에러로 조용히 실패하고 있었다(실전에서 Audiveris
+    출력을 쓸 때마다 벤드/팜뮤트/비브라토 감지가 통째로 빠지던 버그)."""
+    import zipfile
+    from app.pipeline.musicxml_to_gp import _scan_raw_technicals
+
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><technical><bend><bend-alter>2</bend-alter></bend></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    container_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<container><rootfiles><rootfile full-path="input.xml"/></rootfiles></container>"""
+
+    mxl_path = tmp_path / "input.mxl"
+    with zipfile.ZipFile(mxl_path, "w") as zf:
+        zf.writestr("input.xml", xml_text)
+        zf.writestr("META-INF/container.xml", container_xml)
+
+    result = _scan_raw_technicals(str(mxl_path))
+
+    assert result == {(1, 0, 0): {"bend": 2.0}}
+
+
 _BEND_PALM_MUTE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
