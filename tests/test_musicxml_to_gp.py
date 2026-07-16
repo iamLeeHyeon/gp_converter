@@ -1872,6 +1872,36 @@ def test_bend_alter_value_propagated_not_hardcoded(tmp_path):
     assert note.effect.bend.points[-1].value == 1
 
 
+def test_parenthesized_notehead_mapped_to_ghost_note(tmp_path):
+    """<notehead parentheses="yes">(고스트/뮤트 노트 표기)가 GP5
+    NoteEffect.ghostNote로 반영돼야 한다 — 이전엔 표준악보 경로에서
+    이 표기를 감지하는 코드 자체가 없어 조용히 사라졌다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><type>half</type>
+        <notehead parentheses="yes">normal</notehead>
+      </note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "ghost.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "ghost.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 2
+    assert beats[0].notes[0].effect.ghostNote is True
+    assert beats[1].notes[0].effect.ghostNote is False
+
+
 def test_vibrato_mapped_via_raw_xml_scan(tmp_path):
     """<notations><technical><vibrato/>가 GP5 NoteEffect.vibrato로 반영돼야 한다."""
     xml_text = """<?xml version="1.0" encoding="UTF-8"?>

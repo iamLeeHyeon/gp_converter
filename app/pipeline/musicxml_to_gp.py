@@ -181,6 +181,7 @@ class NoteEvent:
     palm_mute: bool = False
     vibrato: bool = False  # <notations><technical><vibrato/>
     trill_alt_midi: Optional[int] = None  # <trill-mark> 대체음(사운딩 MIDI). None이면 트릴 없음
+    ghost: bool = False  # <notehead parentheses="yes"> (고스트/뮤트 노트)
 
 
 @dataclass
@@ -451,6 +452,10 @@ def _extract_events(
                     harmonic = art.harmonicType
                     break
 
+        # <notehead parentheses="yes">는 고스트/뮤트 노트 표기(괄호 노트헤드).
+        # music21이 .noteheadParenthesis로 바로 노출해준다.
+        ghost = not isinstance(n, m21chord.Chord) and bool(n.noteheadParenthesis)
+
         # <slide>/<glissando>는 music21이 Glissando 스패너로 파싱한다(라인타입만
         # 다름). 슬라이드가 시작되는 음표(getFirst())에만 표시한다 — 도착
         # 음표에 또 붙이면 그쪽에서도 슬라이드가 나가는 것처럼 보인다.
@@ -508,7 +513,7 @@ def _extract_events(
             grace = (grace_midi, transition)
             pending_grace = None
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute, slide=slide, vibrato=vibrato, trill_alt_midi=trill_alt_midi))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute, slide=slide, vibrato=vibrato, trill_alt_midi=trill_alt_midi, ghost=ghost))
     return events
 
 
@@ -916,6 +921,8 @@ def _build_song(
                 gnote.effect.slides = [gpm.SlideType.shiftSlideTo]
             if ev.vibrato:
                 gnote.effect.vibrato = True
+            if ev.ghost:
+                gnote.effect.ghostNote = True
             if ev.trill_alt_midi is not None:
                 trill_fret = ev.trill_alt_midi - dict(strings)[snum]
                 if 0 <= trill_fret <= 24:
