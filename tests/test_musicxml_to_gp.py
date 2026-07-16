@@ -607,6 +607,35 @@ def test_midi_program_defaults_when_not_specified(tmp_path):
     assert song.tracks[0].channel.instrument == 25
 
 
+def test_audiveris_voice_oohs_placeholder_ignored(tmp_path):
+    """Audiveris가 실제 악기를 못 알아내면 항상 찍어내는 "Voice Oohs"
+    placeholder(midi-program 54)는 무시하고 기본 어쿠스틱 기타(25)를
+    유지해야 한다 — 이 값을 그대로 썼다면 기타 변환기인데 결과가 전부
+    보컬 음색으로 재생되는 회귀였다(실제 백엔드로 PDF 여러 개 변환해보다
+    발견 — Audiveris 실측 출력이 소스 내용과 무관하게 항상 이 값이었음)."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Voice</part-name>
+    <score-instrument id="P1-I1"><instrument-name>Voice Oohs</instrument-name></score-instrument>
+    <midi-instrument id="P1-I1"><midi-channel>1</midi-channel><midi-program>54</midi-program></midi-instrument>
+  </score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "voice_oohs.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "voice_oohs.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.tracks[0].channel.instrument == 25, "Voice Oohs placeholder는 무시하고 기본 기타 유지"
+
+
 _TIE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>

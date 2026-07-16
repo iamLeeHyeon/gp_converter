@@ -1154,16 +1154,21 @@ def musicxml_to_gp5(
         logger.warning("곡 메타데이터 추출 실패 — 제목/아티스트 없이 계속 진행", exc_info=True)
 
     # ponytail: 악기 추출 실패가 전체 변환을 막으면 안 됨. 실패 시 기본값(어쿠스틱 기타) 유지.
+    # Audiveris는 표준악보에서 실제 악기를 알아낼 방법이 없으면(대부분의 경우)
+    # "Voice Oohs"/midi-program 54를 고정 placeholder로 찍어낸다(실측: 이
+    # 프로젝트에서 시도한 모든 실제 변환이 소스 PDF 내용과 무관하게 예외 없이
+    # 동일한 값이었음) — 이걸 그대로 쓰면 기타 변환기인데 결과가 전부 보컬
+    # 음색으로 재생된다. 이 특정 placeholder는 걸러내고 기본값을 유지한다.
     try:
         inst = score.parts[0].getInstrument()
-        if inst.midiProgram is not None:
-            song.tracks[0].channel.instrument = inst.midiProgram
-        inst_name = (inst.instrumentName or '') + ' ' + (inst.partName or '')
-        inst_name = inst_name.lower()
-        if 'banjo' in inst_name:
-            song.tracks[0].isBanjoTrack = True
-        elif '12' in inst_name and ('string' in inst_name or 'guitar' in inst_name):
-            song.tracks[0].is12StringedGuitarTrack = True
+        if inst.instrumentName != 'Voice Oohs':
+            if inst.midiProgram is not None:
+                song.tracks[0].channel.instrument = inst.midiProgram
+            inst_name = ((inst.instrumentName or '') + ' ' + (inst.partName or '')).lower()
+            if 'banjo' in inst_name:
+                song.tracks[0].isBanjoTrack = True
+            elif '12' in inst_name and ('string' in inst_name or 'guitar' in inst_name):
+                song.tracks[0].is12StringedGuitarTrack = True
     except Exception:
         logger.warning("악기 정보 추출 실패 — 기본 음색 유지", exc_info=True)
 
