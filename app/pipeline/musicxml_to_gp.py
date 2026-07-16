@@ -93,6 +93,16 @@ _ARTICULATION_MAP: Dict[type, str] = {
     m21art.Tenuto:       'tenuto',
 }
 
+# <fingering>은 클래식기타 관행상 오른손(피킹) 표기(p=엄지,i=검지,m=중지,a=약지,
+# c=새끼) — GP5 NoteEffect.rightHandFinger로 대응.
+_FINGERING_TO_GP: Dict[str, gpm.Fingering] = {
+    'p': gpm.Fingering.thumb,
+    'i': gpm.Fingering.index,
+    'm': gpm.Fingering.middle,
+    'a': gpm.Fingering.annular,
+    'c': gpm.Fingering.little,
+}
+
 # music21 Tremolo.numberOfMarks(슬래시 개수) → GP5 Duration.value(트레몰로 속도)
 _TREMOLO_MARKS_TO_GPV: Dict[int, int] = {
     1: gpm.Duration.eighth,
@@ -182,6 +192,8 @@ class NoteEvent:
     vibrato: bool = False  # <notations><technical><vibrato/>
     trill_alt_midi: Optional[int] = None  # <trill-mark> 대체음(사운딩 MIDI). None이면 트릴 없음
     ghost: bool = False  # <notehead parentheses="yes"> (고스트/뮤트 노트)
+    right_hand_finger: Optional[str] = None  # 'p'|'i'|'m'|'a'|'c' (<fingering>, 클래식기타 오른손 표기)
+    tempo_change: Optional[int] = None  # 이 음표에서 시작되는 곡중간 템포 변화(BPM)
 
 
 @dataclass
@@ -382,6 +394,7 @@ def _extract_events(
     initial_velocity: Optional[int] = None,
     technicals: Optional[Dict[int, Dict[str, Optional[float]]]] = None,
     hairpin_velocities: Optional[Dict[int, int]] = None,
+    tempo_changes: Optional[Dict[int, int]] = None,
 ) -> List[NoteEvent]:
     """한 보이스(또는 단일 보이스 마디)에서 음표/쉼표 이벤트 목록을 뽑는다.
 
@@ -391,6 +404,7 @@ def _extract_events(
     매핑(_scan_raw_technicals 참고). None이면 벤드/팜뮤트 없음으로 처리.
     hairpin_velocities: 크레센도/디미누엔도 구간 보간값((id(음표) → velocity),
     _build_hairpin_velocities 참고). 명시적 다이내믹보다 우선 적용한다.
+    tempo_changes: 곡중간 템포 변화((id(음표) → BPM), _build_tempo_changes 참고).
     """
     events: List[NoteEvent] = []
     ordinal = 0
@@ -410,6 +424,7 @@ def _extract_events(
             hairpin_v = hairpin_velocities.get(id(n))
             if hairpin_v is not None:
                 current_velocity = hairpin_v
+        tempo_change = tempo_changes.get(id(n)) if tempo_changes else None
         # 그레이스노트는 NoteEvent로 만들지 않고, 다음 일반음에 첨부한다.
         if isinstance(n, m21note.Note) and n.duration.isGrace:
             grace_midi = n.pitch.midi + _GUITAR_WRITTEN_TO_SOUNDING_OFFSET
@@ -446,11 +461,15 @@ def _extract_events(
                     break
 
         harmonic = None
+        right_hand_finger = None
         if not isinstance(n, m21chord.Chord):
             for art in n.articulations:
                 if isinstance(art, m21art.Harmonic):
                     harmonic = art.harmonicType
-                    break
+                elif isinstance(art, m21art.Fingering) and isinstance(art.fingerNumber, str):
+                    letter = art.fingerNumber.strip().lower()
+                    if letter in _FINGERING_TO_GP:
+                        right_hand_finger = letter
 
         # <notehead parentheses="yes">는 고스트/뮤트 노트 표기(괄호 노트헤드).
         # music21이 .noteheadParenthesis로 바로 노출해준다.
@@ -513,7 +532,7 @@ def _extract_events(
             grace = (grace_midi, transition)
             pending_grace = None
 
-        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute, slide=slide, vibrato=vibrato, trill_alt_midi=trill_alt_midi, ghost=ghost))
+        events.append(NoteEvent(pitches=pitches, ql=ql, tied=tied, tuplet=tuplet, velocity=current_velocity, articulations=arts, grace=grace, tremolo_picking=tremolo_picking, harmonic=harmonic, bend=bend, palm_mute=palm_mute, slide=slide, vibrato=vibrato, trill_alt_midi=trill_alt_midi, ghost=ghost, right_hand_finger=right_hand_finger, tempo_change=tempo_change))
     return events
 
 
@@ -554,6 +573,37 @@ def _extract_tempo(score) -> Optional[int]:
     if not bpm or bpm <= 0:
         return None
     return round(bpm)
+
+
+def _build_tempo_changes(part) -> Dict[int, int]:
+    """최초 이후의 곡중간 템포 변화를 (id(음표) → BPM)으로 매핑한다.
+
+    최초 템포는 song.tempo(_extract_tempo)가 이미 담당하므로 여기서는
+    두 번째 마킹부터 다룬다. 각 마킹이 적용되는 첫 음표에 표시해두면,
+    _build_song이 그 음표의 beat에 MixTableChange(tempo=...)를 붙인다.
+    """
+    marks = sorted(
+        part.recurse().getElementsByClass(m21tempo.MetronomeMark),
+        key=lambda mm: mm.getOffsetInHierarchy(part),
+    )
+    if len(marks) < 2:
+        return {}
+
+    all_notes = list(part.recurse().getElementsByClass((m21note.Note, m21chord.Chord)))
+    offsets = [float(n.getOffsetInHierarchy(part)) for n in all_notes]
+
+    result: Dict[int, int] = {}
+    for mm in marks[1:]:
+        bpm = mm.getQuarterBPM()
+        if not bpm or bpm <= 0:
+            continue
+        mark_offset = float(mm.getOffsetInHierarchy(part))
+        candidates = [(off, n) for off, n in zip(offsets, all_notes) if off >= mark_offset]
+        if not candidates:
+            continue
+        target_note = min(candidates, key=lambda pair: pair[0])[1]
+        result[id(target_note)] = round(bpm)
+    return result
 
 
 def _collect_lyrics(score) -> Tuple[Optional[int], str]:
@@ -662,6 +712,11 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
     except Exception:
         logger.warning("크레센도/디미누엔도 보간 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
         hairpin_velocities = {}
+    try:
+        tempo_changes = _build_tempo_changes(part)
+    except Exception:
+        logger.warning("곡중간 템포 변화 추출 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
+        tempo_changes = {}
     measures = list(part.getElementsByClass(m21stream.Measure))
 
     repeat_alt_by_measure: Dict[int, int] = {}
@@ -720,6 +775,7 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
                         if mnum == m.number and vidx == voice_index
                     },
                     hairpin_velocities=hairpin_velocities,
+                    tempo_changes=tempo_changes,
                 ),
                 expected_ql,
             )
@@ -923,6 +979,12 @@ def _build_song(
                 gnote.effect.vibrato = True
             if ev.ghost:
                 gnote.effect.ghostNote = True
+            if ev.right_hand_finger is not None:
+                gnote.effect.rightHandFinger = _FINGERING_TO_GP[ev.right_hand_finger]
+            if ev.tempo_change is not None:
+                beat.effect.mixTableChange = gpm.MixTableChange(
+                    tempo=gpm.MixTableItem(value=ev.tempo_change),
+                )
             if ev.trill_alt_midi is not None:
                 trill_fret = ev.trill_alt_midi - dict(strings)[snum]
                 if 0 <= trill_fret <= 24:
@@ -1073,9 +1135,15 @@ def musicxml_to_gp5(
 
     # ponytail: 악기 추출 실패가 전체 변환을 막으면 안 됨. 실패 시 기본값(어쿠스틱 기타) 유지.
     try:
-        midi_program = score.parts[0].getInstrument().midiProgram
-        if midi_program is not None:
-            song.tracks[0].channel.instrument = midi_program
+        inst = score.parts[0].getInstrument()
+        if inst.midiProgram is not None:
+            song.tracks[0].channel.instrument = inst.midiProgram
+        inst_name = (inst.instrumentName or '') + ' ' + (inst.partName or '')
+        inst_name = inst_name.lower()
+        if 'banjo' in inst_name:
+            song.tracks[0].isBanjoTrack = True
+        elif '12' in inst_name and ('string' in inst_name or 'guitar' in inst_name):
+            song.tracks[0].is12StringedGuitarTrack = True
     except Exception:
         logger.warning("악기 정보 추출 실패 — 기본 음색 유지", exc_info=True)
 

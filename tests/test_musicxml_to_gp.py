@@ -487,6 +487,49 @@ def test_tempo_defaults_to_120_when_no_marking(tmp_path):
     assert song.tempo == 120
 
 
+_MID_SONG_TEMPO_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <direction placement="above">
+        <direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>120</per-minute></metronome></direction-type>
+        <sound tempo="120"/>
+      </direction>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="above">
+        <direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>160</per-minute></metronome></direction-type>
+        <sound tempo="160"/>
+      </direction>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_mid_song_tempo_change_mapped_to_mix_table_change(tmp_path):
+    """최초 이후의 템포 변화(160bpm)가 그 지점 음표의 beat에
+    MixTableChange(tempo=160)으로 반영돼야 한다 — 이전엔 곡중간 템포
+    변화가 전부 무시돼 최초 템포 그대로 끝까지 재생됐다."""
+    xml_path = tmp_path / "mid_tempo.musicxml"
+    xml_path.write_text(_MID_SONG_TEMPO_XML, encoding="utf-8")
+    out = str(tmp_path / "mid_tempo.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.tempo == 120, "최초 템포는 song.tempo에"
+
+    beat1 = next(b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes)
+    beat2 = next(b for v in song.tracks[0].measures[1].voices for b in v.beats if b.notes)
+    assert beat1.effect.mixTableChange is None
+    assert beat2.effect.mixTableChange is not None
+    assert beat2.effect.mixTableChange.tempo.value == 160
+
+
 _METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <work><work-title>My Song</work-title></work>
@@ -1870,6 +1913,85 @@ def test_bend_alter_value_propagated_not_hardcoded(tmp_path):
     note = beat.notes[0]
     assert note.effect.bend is not None
     assert note.effect.bend.points[-1].value == 1
+
+
+def test_banjo_instrument_name_sets_track_flag(tmp_path):
+    """악기 이름에 "Banjo"가 있으면 GP5 트랙의 isBanjoTrack이 켜져야 한다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Banjo</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "banjo.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "banjo.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.tracks[0].isBanjoTrack is True
+    assert song.tracks[0].is12StringedGuitarTrack is False
+
+
+def test_twelve_string_guitar_instrument_name_sets_track_flag(tmp_path):
+    """악기 이름에 "12-String Guitar"가 있으면 is12StringedGuitarTrack이 켜져야 한다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>12-String Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "twelve_string.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "twelve_string.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert song.tracks[0].is12StringedGuitarTrack is True
+    assert song.tracks[0].isBanjoTrack is False
+
+
+def test_fingering_mapped_to_right_hand_finger(tmp_path):
+    """<fingering>(클래식기타 p/i/m/a 오른손 표기)가 GP5
+    NoteEffect.rightHandFinger로 반영돼야 한다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <notations><technical><fingering>i</fingering></technical></notations>
+      </note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type>
+        <notations><technical><fingering>a</fingering></technical></notations>
+      </note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "fingering.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "fingering.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    beats = [b for v in song.tracks[0].measures[0].voices for b in v.beats if b.notes]
+    assert len(beats) == 3
+    assert beats[0].notes[0].effect.rightHandFinger == guitarpro.Fingering.index
+    assert beats[1].notes[0].effect.rightHandFinger == guitarpro.Fingering.annular
+    assert beats[2].notes[0].effect.rightHandFinger == guitarpro.Fingering.open, "표기 없으면 기본값(open)"
 
 
 def test_parenthesized_notehead_mapped_to_ghost_note(tmp_path):
