@@ -2046,51 +2046,6 @@ def test_bend_alter_value_propagated_not_hardcoded(tmp_path):
     assert note.effect.bend.points[-1].value == 1
 
 
-def test_banjo_instrument_name_sets_track_flag(tmp_path):
-    """악기 이름에 "Banjo"가 있으면 GP5 트랙의 isBanjoTrack이 켜져야 한다."""
-    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
-<score-partwise version="3.1">
-  <part-list><score-part id="P1"><part-name>Banjo</part-name></score-part></part-list>
-  <part id="P1">
-    <measure number="1">
-      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
-      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
-    </measure>
-  </part>
-</score-partwise>"""
-    xml_path = tmp_path / "banjo.musicxml"
-    xml_path.write_text(xml_text, encoding="utf-8")
-    out = str(tmp_path / "banjo.gp5")
-
-    musicxml_to_gp5(str(xml_path), out)
-
-    song = guitarpro.parse(out)
-    assert song.tracks[0].isBanjoTrack is True
-    assert song.tracks[0].is12StringedGuitarTrack is False
-
-
-def test_twelve_string_guitar_instrument_name_sets_track_flag(tmp_path):
-    """악기 이름에 "12-String Guitar"가 있으면 is12StringedGuitarTrack이 켜져야 한다."""
-    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
-<score-partwise version="3.1">
-  <part-list><score-part id="P1"><part-name>12-String Guitar</part-name></score-part></part-list>
-  <part id="P1">
-    <measure number="1">
-      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
-      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
-    </measure>
-  </part>
-</score-partwise>"""
-    xml_path = tmp_path / "twelve_string.musicxml"
-    xml_path.write_text(xml_text, encoding="utf-8")
-    out = str(tmp_path / "twelve_string.gp5")
-
-    musicxml_to_gp5(str(xml_path), out)
-
-    song = guitarpro.parse(out)
-    assert song.tracks[0].is12StringedGuitarTrack is True
-    assert song.tracks[0].isBanjoTrack is False
-
 
 def test_fingering_mapped_to_right_hand_finger(tmp_path):
     """<fingering>(클래식기타 p/i/m/a 오른손 표기)가 GP5

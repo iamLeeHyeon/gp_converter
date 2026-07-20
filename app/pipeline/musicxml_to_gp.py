@@ -1182,14 +1182,8 @@ def musicxml_to_gp5(
     # 음색으로 재생된다. 이 특정 placeholder는 걸러내고 기본값을 유지한다.
     try:
         inst = score.parts[0].getInstrument()
-        if inst.instrumentName != 'Voice Oohs':
-            if inst.midiProgram is not None:
-                song.tracks[0].channel.instrument = inst.midiProgram
-            inst_name = ((inst.instrumentName or '') + ' ' + (inst.partName or '')).lower()
-            if 'banjo' in inst_name:
-                song.tracks[0].isBanjoTrack = True
-            elif '12' in inst_name and ('string' in inst_name or 'guitar' in inst_name):
-                song.tracks[0].is12StringedGuitarTrack = True
+        if inst.instrumentName != 'Voice Oohs' and inst.midiProgram is not None:
+            song.tracks[0].channel.instrument = inst.midiProgram
     except Exception:
         logger.warning("악기 정보 추출 실패 — 기본 음색 유지", exc_info=True)
 
