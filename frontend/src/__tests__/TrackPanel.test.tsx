@@ -26,7 +26,7 @@ import TrackPanel from '../components/Editor/TrackPanel'
 describe('TrackPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useEditorStore.setState({ present: snap1, selectedTrackIndex: 0, activeVoice: 0, fileId: 'f1' } as any)
+    useEditorStore.setState({ present: snap1, selectedTrackIndex: 0, fileId: 'f1' } as any)
   })
 
   it('트랙 목록 렌더링', () => {
@@ -47,18 +47,6 @@ describe('TrackPanel', () => {
   it('Capo 입력 존재', () => {
     render(<TrackPanel />)
     expect(screen.getByLabelText(/Capo/i)).toBeInTheDocument()
-  })
-
-  it('Voice 1/2 토글 버튼 존재', () => {
-    render(<TrackPanel />)
-    expect(screen.getByRole('button', { name: /Voice 1/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Voice 2/i })).toBeInTheDocument()
-  })
-
-  it('Voice 2 클릭 → activeVoice=1 설정', async () => {
-    render(<TrackPanel />)
-    await userEvent.click(screen.getByRole('button', { name: /Voice 2/i }))
-    expect(useEditorStore.getState().activeVoice).toBe(1)
   })
 
   it('트랙 추가 버튼 클릭 → api.syncFile 호출', async () => {

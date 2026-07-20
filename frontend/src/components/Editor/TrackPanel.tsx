@@ -22,7 +22,7 @@ function detectPreset(tuning: number[] | undefined): string {
 }
 
 export default function TrackPanel() {
-  const { present, selectedTrackIndex, activeVoice, fileId, pushSnapshot } =
+  const { present, selectedTrackIndex, fileId, pushSnapshot } =
     useEditorStore()
   const [busy, setBusy] = useState(false)
   const nameSyncTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -139,20 +139,6 @@ export default function TrackPanel() {
               onChange={e => applyAndSync({ type: 'setCapo', trackIndex: selectedTrackIndex, capo: Number(e.target.value) })}
             />
           </label>
-
-          {/* Voice 토글 */}
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              className={activeVoice === 0 ? 'btn-primary' : 'btn-ghost'}
-              style={{ fontSize: 12, padding: '6px 12px' }}
-              onClick={() => useEditorStore.setState({ activeVoice: 0 })}
-            >Voice 1</button>
-            <button
-              className={activeVoice === 1 ? 'btn-primary' : 'btn-ghost'}
-              style={{ fontSize: 12, padding: '6px 12px' }}
-              onClick={() => useEditorStore.setState({ activeVoice: 1 })}
-            >Voice 2</button>
-          </div>
         </div>
       )}
     </div>

@@ -13,7 +13,6 @@ interface EditorState {
   // v2 추가
   selectedTrackIndex: number
   selectedMeasureIndex: number
-  activeVoice: 0 | 1
   gp5Buffer: ArrayBuffer | null
 
   setSelected: (pos: NotePosition | null) => void
@@ -37,7 +36,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // v2 추가
   selectedTrackIndex: 0,
   selectedMeasureIndex: 0,
-  activeVoice: 0 as 0 | 1,
   gp5Buffer: null,
 
   setSelected: (pos) => set({ selected: pos }),

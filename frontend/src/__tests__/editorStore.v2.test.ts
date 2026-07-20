@@ -6,7 +6,6 @@ describe('editorStore v2 상태', () => {
     useEditorStore.setState({
       selectedTrackIndex: 0,
       selectedMeasureIndex: 0,
-      activeVoice: 0,
       gp5Buffer: null,
     })
   })
@@ -19,10 +18,6 @@ describe('editorStore v2 상태', () => {
     expect(useEditorStore.getState().selectedMeasureIndex).toBe(0)
   })
 
-  it('activeVoice 초기값 0', () => {
-    expect(useEditorStore.getState().activeVoice).toBe(0)
-  })
-
   it('setGp5Buffer로 gp5Buffer 업데이트', () => {
     const buf = new ArrayBuffer(8)
     useEditorStore.getState().setGp5Buffer(buf)
@@ -32,10 +27,5 @@ describe('editorStore v2 상태', () => {
   it('selectedTrackIndex 변경', () => {
     useEditorStore.setState({ selectedTrackIndex: 2 })
     expect(useEditorStore.getState().selectedTrackIndex).toBe(2)
-  })
-
-  it('activeVoice 토글 0↔1', () => {
-    useEditorStore.setState({ activeVoice: 1 })
-    expect(useEditorStore.getState().activeVoice).toBe(1)
   })
 })
