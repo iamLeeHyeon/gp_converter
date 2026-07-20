@@ -59,6 +59,11 @@ export function serializeScore(score: any): ScoreSnapshot {
     const tuning = Array.isArray(track.tuning) ? (track.tuning as number[]) : undefined
 
     const staff = track.staves[0]
+    // pitchPosition.ts가 이미 staff.capo를 읽어 피치 추정에 쓰고 있음 —
+    // alphaTab에 실존하는 필드인데 직렬화에서만 빠져있어서, 카포 있는
+    // 곡을 열면 항상 0으로 보이고 구조 편집 한 번만 해도 영구 소실됐다.
+    const capoVal = staff.capo as number | undefined
+    const capo = capoVal ? capoVal : undefined
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const measures: SnapshotMeasure[] = staff.bars.map((bar: any) => {
       const mb = bar.masterBar
@@ -92,7 +97,7 @@ export function serializeScore(score: any): ScoreSnapshot {
       }
     })
 
-    return { name, tuning, measures }
+    return { name, tuning, capo, measures }
   })
 
   return { tracks }

@@ -26,6 +26,7 @@ function mockScore(opts: {
       name: opts.trackName ?? 'Guitar',
       tuning: opts.tuning ?? [64, 59, 55, 50, 45, 40],
       staves: [{
+        capo: opts.capo ?? 0,
         bars: [{
           masterBar: {
             timeSignatureNumerator: 4,
@@ -46,10 +47,16 @@ function mockScore(opts: {
 describe('serializeScore v2', () => {
   it('tracks에 name, tuning, capo 포함', () => {
     const score = mockScore({ trackName: 'Bass', tuning: [43, 38, 33, 28], capo: 2 })
-    // capo는 alphaTab에 없으므로 score 객체에서 읽지 않고 기본값 0
     const snap = serializeScore(score)
     expect(snap.tracks[0].name).toBe('Bass')
     expect(snap.tracks[0].tuning).toEqual([43, 38, 33, 28])  // score.tuning 사용
+    expect(snap.tracks[0].capo).toBe(2)  // staff.capo 사용 (pitchPosition.ts도 이미 읽는 실존 필드)
+  })
+
+  it('capo 없으면(0) 생략된다', () => {
+    const score = mockScore({ capo: 0 })
+    const snap = serializeScore(score)
+    expect(snap.tracks[0].capo).toBeUndefined()
   })
 
   it('measures에 voices 배열 포함', () => {
