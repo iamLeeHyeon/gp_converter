@@ -49,7 +49,12 @@ export function applyStructuralEdit(
       break
     }
     case 'moveMeasure': {
-      if (edit.from === edit.to) break
+      const len = tracks[0]?.measures.length ?? 0
+      // splice는 음수/범위초과 인덱스를 "끝에서 N번째"로 해석해 조용히
+      // 받아준다 — 첫 마디를 위로, 마지막 마디를 아래로 이동시키면 각각
+      // to: -1, to: length가 넘어오는데, 가드 없이 그대로 splice하면
+      // 마디가 곡 안 엉뚱한 위치로 파괴적으로 재배치된다.
+      if (edit.from === edit.to || edit.to < 0 || edit.to >= len) break
       tracks.forEach(t => {
         const [removed] = t.measures.splice(edit.from, 1)
         t.measures.splice(edit.to, 0, removed)

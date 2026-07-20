@@ -57,14 +57,14 @@ export default function StructurePanel() {
             <button
               style={{ fontSize: 10 }}
               className="btn-ghost"
-              disabled={busy}
+              disabled={busy || i === 0}
               aria-label={`마디 ${i + 1} 위로`}
               onClick={(e) => { e.stopPropagation(); applyAndSync({ type: 'moveMeasure', from: i, to: i - 1 }) }}
             >↑</button>
             <button
               style={{ fontSize: 10 }}
               className="btn-ghost"
-              disabled={busy}
+              disabled={busy || i === measures.length - 1}
               aria-label={`마디 ${i + 1} 아래로`}
               onClick={(e) => { e.stopPropagation(); applyAndSync({ type: 'moveMeasure', from: i, to: i + 1 }) }}
             >↓</button>

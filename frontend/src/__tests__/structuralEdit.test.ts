@@ -63,6 +63,27 @@ describe('applyStructuralEdit', () => {
       const result = applyStructuralEdit(snap, { type: 'moveMeasure', from: 2, to: 0 })
       expect(result.tracks[0].measures.map(m => m.sectionMarker)).toEqual(['C', 'A', 'B'])
     })
+
+    it('첫 마디를 위로 이동(to: -1)해도 파괴적으로 재배치되면 안 된다', () => {
+      // 첫 마디에서 "위로" 버튼은 항상 to: from - 1 = -1을 넘긴다. splice(-1, ...)는
+      // "배열 끝에서 하나 앞"에 삽입하는 뜻이라, 가드가 없으면 그 마디가 곡 끝
+      // 근처로 순간이동하는 파괴적 버그가 된다.
+      const snap = makeSnap(3)
+      snap.tracks[0].measures[0].sectionMarker = 'A'
+      snap.tracks[0].measures[1].sectionMarker = 'B'
+      snap.tracks[0].measures[2].sectionMarker = 'C'
+      const result = applyStructuralEdit(snap, { type: 'moveMeasure', from: 0, to: -1 })
+      expect(result.tracks[0].measures.map(m => m.sectionMarker)).toEqual(['A', 'B', 'C'])
+    })
+
+    it('마지막 마디를 아래로 이동(to: length)해도 파괴적으로 재배치되면 안 된다', () => {
+      const snap = makeSnap(3)
+      snap.tracks[0].measures[0].sectionMarker = 'A'
+      snap.tracks[0].measures[1].sectionMarker = 'B'
+      snap.tracks[0].measures[2].sectionMarker = 'C'
+      const result = applyStructuralEdit(snap, { type: 'moveMeasure', from: 2, to: 3 })
+      expect(result.tracks[0].measures.map(m => m.sectionMarker)).toEqual(['A', 'B', 'C'])
+    })
   })
 
   describe('setTimeSignature', () => {
