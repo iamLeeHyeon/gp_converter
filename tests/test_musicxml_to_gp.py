@@ -1912,6 +1912,75 @@ def test_scan_raw_technicals_reads_mxl_zip_container(tmp_path):
     assert result == {(1, 0, 0): {"bend": 2.0}}
 
 
+def test_scan_raw_technicals_ignores_other_parts(tmp_path):
+    """여러 파트짜리 악보(보컬+기타 리드시트 등)에서, 다른 파트(Vocal)의
+    벤드가 첫 파트(Guitar, 실제로 변환되는 파트)로 새어 들어가면 안 된다
+    — 이전엔 part 구분 없이 모든 <part>를 훑어서 (마디,보이스,순번)만으로
+    합쳤기 때문에, 두 파트의 같은 위치 음표가 서로 이펙트를 오염시켰다."""
+    from app.pipeline.musicxml_to_gp import _scan_raw_technicals
+
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+    <score-part id="P2"><part-name>Vocal</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><technical><bend><bend-alter>4</bend-alter></bend></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "multi_part.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+
+    result = _scan_raw_technicals(str(xml_path))
+
+    assert result == {}, "Guitar(첫 파트)엔 벤드가 없으므로 Vocal 파트 것이 새어 들어가면 안 됨"
+
+
+def test_scan_raw_technicals_voice_index_matches_music21_sorted_order(tmp_path):
+    """voice_index는 XML 문서상 등장 순서가 아니라 music21처럼 voice id
+    문자열 정렬 순서로 매겨야 한다 — 2성 마디에서 voice "2"가 문서상 voice
+    "1"보다 먼저 나오면(흔한 표기 방식), 이전엔 raw 스캔이 "2"를 index 0으로
+    잘못 매겨서 벤드가 엉뚱한 보이스 음표에 붙었다."""
+    from app.pipeline.musicxml_to_gp import _scan_raw_technicals
+
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>G</step><octave>3</octave></pitch><duration>4</duration><type>whole</type>
+        <voice>2</voice>
+        <notations><technical><bend><bend-alter>4</bend-alter></bend></technical></notations>
+      </note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <voice>1</voice>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "voice_order.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+
+    result = _scan_raw_technicals(str(xml_path))
+
+    # music21: sorted({"1","2"}) -> voice "1"=index0, voice "2"=index1.
+    assert result == {(1, 1, 0): {"bend": 4.0}}
+
+
 _BEND_PALM_MUTE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>

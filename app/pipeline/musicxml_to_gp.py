@@ -667,15 +667,38 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, 
     경계 음표에만 표시하고 그 사이 음표까지 전파하지 않는다(추가로 단순화).
     쉼표·화음 연속음(<chord/>)·꾸밈음(<grace/>)은 순번에서 제외한다
     (_extract_events가 이들을 건너뛰거나 따로 처리하는 것과 동일하게 유지).
+
+    첫 번째 <part>만 본다 — _collect_notes/musicxml_to_gp5가 score.parts[0]만
+    변환하는 것과 맞춰야 한다. 전체 <part>를 다 훑으면 (마디,보이스,순번)만
+    으로는 파트를 구분 못 해서, 다른 파트(예: 보컬 멜로디)의 벤드/팜뮤트가
+    실제로 변환되는 첫 파트(기타)의 같은 위치 음표로 잘못 새어 들어간다.
     """
     result: Dict[Tuple[int, int, int], Dict[str, Optional[float]]] = {}
     root = _read_xml_root(xml_path)
-    for part in root.findall("part"):
-        for measure in part.findall("measure"):
+    first_part = root.find("part")
+    if first_part is not None:
+        for measure in first_part.findall("measure"):
             measure_number = int(measure.get("number"))
-            voice_order: List[str] = []
+            notes = measure.findall("note")
+
+            # voice_index는 XML 문서상 등장 순서가 아니라, music21의
+            # MusicXML importer(voiceIndices를 set에 모아 sorted()로 Voice를
+            # 만드는 방식, xmlToM21.py)와 똑같이 voice id 문자열 정렬 순서로
+            # 매겨야 한다 — 안 그러면 2성 마디에서 voice "2"가 문서상 먼저
+            # 나올 때(흔한 표기) raw 스캔과 music21의 보이스 순서가 어긋난다.
+            voice_texts_seen: Set[str] = set()
+            for note in notes:
+                if note.find("rest") is not None:
+                    continue
+                if note.find("chord") is not None:
+                    continue
+                if note.find("grace") is not None:
+                    continue
+                voice_texts_seen.add(note.findtext("voice") or "1")
+            voice_order = sorted(voice_texts_seen)
+
             ordinals: Dict[str, int] = {}
-            for note in measure.findall("note"):
+            for note in notes:
                 if note.find("rest") is not None:
                     continue
                 if note.find("chord") is not None:
@@ -683,8 +706,6 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, 
                 if note.find("grace") is not None:
                     continue
                 voice_text = note.findtext("voice") or "1"
-                if voice_text not in voice_order:
-                    voice_order.append(voice_text)
                 voice_index = voice_order.index(voice_text)
                 ordinal = ordinals.get(voice_text, 0)
                 ordinals[voice_text] = ordinal + 1
