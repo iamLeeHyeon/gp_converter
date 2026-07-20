@@ -412,6 +412,55 @@ def test_snapshot_to_gp5_no_string_reversal(tmp_path):
     assert note.string == 1
 
 
+def test_snapshot_to_gp5_trill_effect(tmp_path):
+    """effect='trill' + trillFret이 GP5 TrillEffect로 반영돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    snap = {"tracks": [{"measures": [{"timeSignature": {"num": 4, "den": 4},
+        "beats": [{"duration": 4, "dotted": False, "status": "normal",
+                   "dynamic": "mf",
+                   "notes": [{"string": 1, "fret": 5, "effect": "trill", "trillFret": 7}]}]}]}]}
+    out = str(tmp_path / "out.gp5")
+    snapshot_to_gp5(snap, out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.trill is not None
+    assert note.effect.trill.fret == 7
+
+
+def test_snapshot_to_gp5_vibrato_effect(tmp_path):
+    """effect='vibrato'가 GP5 NoteEffect.vibrato로 반영돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    snap = {"tracks": [{"measures": [{"timeSignature": {"num": 4, "den": 4},
+        "beats": [{"duration": 4, "dotted": False, "status": "normal",
+                   "dynamic": "mf",
+                   "notes": [{"string": 1, "fret": 5, "effect": "vibrato"}]}]}]}]}
+    out = str(tmp_path / "out.gp5")
+    snapshot_to_gp5(snap, out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.vibrato is True
+
+
+def test_snapshot_to_gp5_right_hand_finger(tmp_path):
+    """rightHandFinger가 GP5 NoteEffect.rightHandFinger로 반영돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import snapshot_to_gp5
+
+    snap = {"tracks": [{"measures": [{"timeSignature": {"num": 4, "den": 4},
+        "beats": [{"duration": 4, "dotted": False, "status": "normal",
+                   "dynamic": "mf",
+                   "notes": [{"string": 1, "fret": 5, "rightHandFinger": 1}]}]}]}]}
+    out = str(tmp_path / "out.gp5")
+    snapshot_to_gp5(snap, out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.rightHandFinger == guitarpro.Fingering.index
+
+
 def test_snapshot_to_gp5_empty_raises(tmp_path):
     """트랙 없으면 ValueError가 발생해야 한다."""
     from app.pipeline.token_to_gp import snapshot_to_gp5

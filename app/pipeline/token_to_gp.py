@@ -428,8 +428,20 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
                     elif eff in _SLIDE_MAP:
                         gnote.effect.slides = [_SLIDE_MAP[eff]]
                         gnote.type = NoteType.normal
+                    elif eff == "trill":
+                        gnote.effect.trill = gpm.TrillEffect(
+                            fret=nd.get("trillFret", gnote.value),
+                            duration=gpm.Duration(value=gpm.Duration.sixteenth),
+                        )
+                        gnote.type = NoteType.normal
+                    elif eff == "vibrato":
+                        gnote.effect.vibrato = True
+                        gnote.type = NoteType.normal
                     else:
                         gnote.type = NoteType.normal
+                    rh_finger = nd.get("rightHandFinger")
+                    if rh_finger is not None:
+                        gnote.effect.rightHandFinger = gpm.Fingering(rh_finger)
                     beat.notes.append(gnote)
 
             strum = bdata.get("strumDown")
