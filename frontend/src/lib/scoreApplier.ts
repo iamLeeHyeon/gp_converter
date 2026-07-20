@@ -54,6 +54,8 @@ function clearNoteEffects(note: any) {
   note.harmonicType = 0
   note.slideInType = 0
   note.slideOutType = 0
+  note.trillValue = 0
+  note.vibrato = 0 // VibratoType.None
 }
 
 // alphaTab은 GP 파일을 파싱할 때 각 Note.finish()에서 hammerPullDestination/
@@ -144,6 +146,12 @@ export function applyEdit(score: any, pos: NotePosition, edit: EditPayload): voi
       note.isDead = true
     } else if (edit.value === 'harmonic') {
       note.harmonicType = 1
+    } else if (edit.value === 'trill') {
+      // 온음(2반음) 위 이웃음을 대체음으로 — musicxml_to_gp.py의 <bend-alter>
+      // 없을 때 기본값(2.0=1음)과 동일한 관례로 맞춘다.
+      note.trillValue = note.realValue + 2
+    } else if (edit.value === 'vibrato') {
+      note.vibrato = 1 // VibratoType.Slight
     } else if (edit.value !== null && EFFECT_SLIDE_MAP[edit.value] !== undefined) {
       const slideVal = EFFECT_SLIDE_MAP[edit.value]!
       if (slideVal.slideInType !== undefined) note.slideInType = slideVal.slideInType

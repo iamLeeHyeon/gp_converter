@@ -102,6 +102,31 @@ describe('applyEdit', () => {
     expect(note.isHammerPullOrigin).toBe(false)
   })
 
+  it('trill 이펙트를 적용하면 trillValue가 realValue+2(온음 위)로 설정된다', async () => {
+    const { applyEdit } = await import('../lib/scoreApplier')
+    const score = makeScore([makeBeat({ notes: [makeNote({ realValue: 60 })] })])
+    applyEdit(score, POS, { type: 'effect', value: 'trill' })
+    const note = score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0]
+    expect(note.trillValue).toBe(62)
+  })
+
+  it('vibrato 이펙트를 적용하면 vibrato가 켜진다', async () => {
+    const { applyEdit } = await import('../lib/scoreApplier')
+    const score = makeScore()
+    applyEdit(score, POS, { type: 'effect', value: 'vibrato' })
+    const note = score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0]
+    expect(note.vibrato).toBeGreaterThan(0)
+  })
+
+  it('다른 이펙트로 바꾸면 기존 trill/vibrato가 같이 꺼진다', async () => {
+    const { applyEdit } = await import('../lib/scoreApplier')
+    const score = makeScore([makeBeat({ notes: [makeNote({ trillValue: 62, vibrato: 1 })] })])
+    applyEdit(score, POS, { type: 'effect', value: 'ghost' })
+    const note = score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0]
+    expect(note.trillValue).toBe(0)
+    expect(note.vibrato).toBe(0)
+  })
+
   it('다이나믹을 변경한다', async () => {
     const { applyEdit } = await import('../lib/scoreApplier')
     const score = makeScore()

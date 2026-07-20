@@ -3,6 +3,7 @@ export type Effect =
   | 'slide-shift' | 'slide-legato'
   | 'slide-in-above' | 'slide-out-below'
   | 'mute' | 'ghost' | 'harmonic'
+  | 'trill' | 'vibrato'
 
 export type Dynamic = 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff'
 
@@ -10,6 +11,8 @@ export interface SnapshotNote {
   string: number      // 1-6, GP 컨벤션 (1=high E)
   fret: number        // 0-24
   effect?: Effect
+  trillFret?: number       // effect === 'trill'일 때만 의미 있음(같은 현의 대체음 프렛)
+  rightHandFinger?: number // 0=엄지,1=검지,2=중지,3=약지,4=새끼(GP5 Fingering과 동일 값). effect와 별개로 공존 가능
 }
 
 export interface SnapshotBeat {

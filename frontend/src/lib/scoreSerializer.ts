@@ -22,6 +22,11 @@ export function getNoteEffect(note: Record<string, unknown>): Effect | undefined
   if (slideOutType > 0 && SLIDE_OUT_TYPE_MAP[slideOutType]) return SLIDE_OUT_TYPE_MAP[slideOutType]
   const slideInType = note.slideInType as number
   if (slideInType > 0 && SLIDE_IN_TYPE_MAP[slideInType]) return SLIDE_IN_TYPE_MAP[slideInType]
+  // trillValue(대상음 MIDI값)가 0보다 크면 트릴이 설정된 것 — alphaTab은
+  // 트릴 없는 음표엔 이 값을 0으로 둔다.
+  if ((note.trillValue as number) > 0) return 'trill'
+  // VibratoType.None = 0
+  if ((note.vibrato as number) > 0) return 'vibrato'
   return undefined
 }
 
@@ -31,11 +36,18 @@ export function serializeBeat(beat: any): SnapshotBeat {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const notes: SnapshotNote[] = (beat.isRest ? [] : (beat.notes as any[])).map(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (note: any): SnapshotNote => ({
-      string: note.string as number,
-      fret: note.fret as number,
-      effect: getNoteEffect(note),
-    }),
+    (note: any): SnapshotNote => {
+      const effect = getNoteEffect(note)
+      const rhFinger = note.rightHandFinger as number
+      return {
+        string: note.string as number,
+        fret: note.fret as number,
+        effect,
+        trillFret: effect === 'trill' ? (note.trillFret as number) : undefined,
+        // Fingers.NoOrDead=-1, Unknown=-2 — 실제 지정된 손가락(0~4)만 남긴다.
+        rightHandFinger: rhFinger >= 0 ? rhFinger : undefined,
+      }
+    },
   )
   return {
     // alphaTab의 Beat.duration은 객체가 아니라 Duration enum 값 자체(Quarter=4 등)이고,

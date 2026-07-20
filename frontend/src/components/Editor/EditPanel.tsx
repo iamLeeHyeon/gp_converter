@@ -27,6 +27,8 @@ const EFFECTS: Array<{ value: Effect; label: string }> = [
   { value: 'mute', label: 'X' },
   { value: 'ghost', label: '( )' },
   { value: 'harmonic', label: '⬦' },
+  { value: 'trill', label: 'tr' },
+  { value: 'vibrato', label: '~' },
 ]
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
