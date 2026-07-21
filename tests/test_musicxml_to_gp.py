@@ -1948,6 +1948,44 @@ def test_scan_raw_technicals_ignores_other_parts(tmp_path):
     assert result == {}, "Guitar(첫 파트)엔 벤드가 없으므로 Vocal 파트 것이 새어 들어가면 안 됨"
 
 
+def test_scan_raw_technicals_part_index_selects_that_part(tmp_path):
+    """part_index로 지정한 파트만 스캔해야 한다 — 다중트랙 변환 시 2번째
+    이후 파트의 벤드/팜뮤트도 그 파트 자신의 스캔 결과로 얻을 수 있어야 한다."""
+    from app.pipeline.musicxml_to_gp import _scan_raw_technicals
+
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar</part-name></score-part>
+    <score-part id="P2"><part-name>Vocal</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><technical><bend><bend-alter>4</bend-alter></bend></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "multi_part_index.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+
+    part0_result = _scan_raw_technicals(str(xml_path), 0)
+    part1_result = _scan_raw_technicals(str(xml_path), 1)
+    default_result = _scan_raw_technicals(str(xml_path))
+
+    assert part0_result == {}
+    assert part1_result == {(1, 0, 0): {"bend": 4.0}}
+    assert default_result == part0_result  # 기본값(0)은 기존 동작과 동일해야 함
+
+
 def test_scan_raw_technicals_voice_index_matches_music21_sorted_order(tmp_path):
     """voice_index는 XML 문서상 등장 순서가 아니라 music21처럼 voice id
     문자열 정렬 순서로 매겨야 한다 — 2성 마디에서 voice "2"가 문서상 voice

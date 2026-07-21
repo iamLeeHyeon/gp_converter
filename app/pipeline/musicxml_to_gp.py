@@ -652,7 +652,9 @@ def _read_xml_root(xml_path: str) -> ET.Element:
     return ET.parse(xml_path).getroot()
 
 
-def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, Optional[float]]]:
+def _scan_raw_technicals(
+    xml_path: str, part_index: int = 0
+) -> Dict[Tuple[int, int, int], Dict[str, Optional[float]]]:
     """원본 MusicXML을 병행 파싱해 (마디, 보이스, 순번)별 벤드/팜뮤트/비브라토 표기를 찾는다.
 
     music21이 <bend>/<palm-mute>/<vibrato>를 파싱하지 않아서 raw XML을 직접 훑는다.
@@ -668,16 +670,16 @@ def _scan_raw_technicals(xml_path: str) -> Dict[Tuple[int, int, int], Dict[str, 
     쉼표·화음 연속음(<chord/>)·꾸밈음(<grace/>)은 순번에서 제외한다
     (_extract_events가 이들을 건너뛰거나 따로 처리하는 것과 동일하게 유지).
 
-    첫 번째 <part>만 본다 — _collect_notes/musicxml_to_gp5가 score.parts[0]만
-    변환하는 것과 맞춰야 한다. 전체 <part>를 다 훑으면 (마디,보이스,순번)만
-    으로는 파트를 구분 못 해서, 다른 파트(예: 보컬 멜로디)의 벤드/팜뮤트가
-    실제로 변환되는 첫 파트(기타)의 같은 위치 음표로 잘못 새어 들어간다.
+    part_index로 지정한 <part>만 본다(기본값 0=첫 번째 파트) — _collect_notes가
+    이 함수를 호출할 때 자신이 처리 중인 파트와 같은 인덱스를 넘겨서, 다른
+    파트의 벤드/팜뮤트가 엉뚱한 파트의 같은 위치 음표로 새어 들어가지 않게 한다.
     """
     result: Dict[Tuple[int, int, int], Dict[str, Optional[float]]] = {}
     root = _read_xml_root(xml_path)
-    first_part = root.find("part")
-    if first_part is not None:
-        for measure in first_part.findall("measure"):
+    parts = root.findall("part")
+    target_part = parts[part_index] if 0 <= part_index < len(parts) else None
+    if target_part is not None:
+        for measure in target_part.findall("measure"):
             measure_number = int(measure.get("number"))
             notes = measure.findall("note")
 
