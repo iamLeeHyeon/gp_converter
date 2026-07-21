@@ -731,8 +731,8 @@ def _scan_raw_technicals(
     return result
 
 
-def _collect_notes(score, xml_path: str) -> List[MeasureData]:
-    """첫 번째 파트에서 마디 단위 (박자, 조표, 보이스별 음표/쉼표) 목록을 추출한다.
+def _collect_notes(part, xml_path: str, part_index: int = 0) -> List[MeasureData]:
+    """지정된 파트에서 마디 단위 (박자, 조표, 보이스별 음표/쉼표) 목록을 추출한다.
 
     박자/조표는 명시된 마디가 없으면 이전 마디 값을 이어받는다(carry-forward).
     Chord는 모든 구성음을 MIDI 내림차순으로 pitches에 담는다(현 배정은
@@ -743,10 +743,13 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
     총합을 못 채워 GP5가 깨진다).
     한 마디에 보이스가 여러 개면(예: <backup>으로 만든 2성) GP5가 지원하는
     최대 2개까지만 voices에 담는다(3개 이상이면 나머지는 버림).
+
+    part_index는 이 part가 원본 <part-list>에서 몇 번째인지(0-based) — raw XML
+    스캔(_scan_raw_technicals)이 같은 인덱스로 이 파트만 보게 맞추는 용도다.
+    다중 파트 변환에서는 파트마다 이 함수를 따로 호출한다.
     """
-    part = score.parts[0]
     try:
-        raw_technicals = _scan_raw_technicals(xml_path)
+        raw_technicals = _scan_raw_technicals(xml_path, part_index)
     except Exception:
         logger.warning("벤드/팜뮤트/비브라토 raw XML 스캔 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
         raw_technicals = {}
@@ -756,14 +759,19 @@ def _collect_notes(score, xml_path: str) -> List[MeasureData]:
         logger.warning("크레센도/디미누엔도 보간 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
         hairpin_velocities = {}
     try:
-        tempo_changes = _build_tempo_changes(part)
+        # 곡중간 템포 변화는 "곡 전체" 개념이다(트랙마다 재생 속도가 따로
+        # 달라질 수 없다) — 파트 0에서만 계산하고, 다른 파트에서는 계산 자체를
+        # 건너뛴다(설계 문서 "코드 변경 지점" 3번). 안 그러면 2번째 이후
+        # 파트에 우연히 붙은 템포 표기가 그 파트의 트랙에 곡 전체 재생 속도를
+        # 바꾸는 MixTableChange로 잘못 붙는다.
+        tempo_changes = _build_tempo_changes(part) if part_index == 0 else {}
     except Exception:
         logger.warning("곡중간 템포 변화 추출 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
         tempo_changes = {}
     measures = list(part.getElementsByClass(m21stream.Measure))
 
     repeat_alt_by_measure: Dict[int, int] = {}
-    for rb in score.recurse().getElementsByClass(m21spanner.RepeatBracket):
+    for rb in part.recurse().getElementsByClass(m21spanner.RepeatBracket):
         bitmask = 0
         for n in rb.getNumberList():
             bitmask |= 1 << (n - 1)

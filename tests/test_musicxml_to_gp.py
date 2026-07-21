@@ -2224,3 +2224,106 @@ def test_scan_raw_technicals_failure_does_not_fail_entire_conversion(tmp_path):
     # 파일 자체는 유효한 GP5여야 한다
     song = guitarpro.parse(out)
     assert len(song.tracks) > 0
+
+
+def test_collect_notes_takes_explicit_part_and_index(tmp_path):
+    """_collect_notes가 score.parts[0] 고정이 아니라 명시적으로 받은 part를
+    처리해야 한다 — 다중트랙 변환에서 파트마다 따로 호출할 수 있어야 함."""
+    from music21 import converter
+    from app.pipeline.musicxml_to_gp import _collect_notes
+
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar 1</part-name></score-part>
+    <score-part id="P2"><part-name>Guitar 2</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><technical><bend><bend-alter>4</bend-alter></bend></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "two_part_collect.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+
+    score = converter.parse(str(xml_path))
+
+    md0 = _collect_notes(score.parts[0], str(xml_path), 0)
+    md1 = _collect_notes(score.parts[1], str(xml_path), 1)
+
+    assert md0[0].voices[0][0].pitches == [48]  # C4 (기타 표기: C3)
+    assert md0[0].voices[0][0].bend is None
+    assert md1[0].voices[0][0].pitches == [55]  # G4 (기타 표기: G3)
+    assert md1[0].voices[0][0].bend == 4.0  # part_index=1로 스캔한 벤드가 이 파트에만 적용
+
+
+def test_collect_notes_only_computes_tempo_changes_for_part_zero(tmp_path):
+    """곡중간 템포 변화는 곡 전체 개념이라 파트 0에서만 계산해야 한다 —
+    다른 파트(part_index != 0)에 독립적인 템포 표기가 있어도 무시해야 함."""
+    from music21 import converter
+    from app.pipeline.musicxml_to_gp import _collect_notes
+
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar 1</part-name></score-part>
+    <score-part id="P2"><part-name>Guitar 2</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <direction placement="above">
+        <direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>120</per-minute></metronome></direction-type>
+        <sound tempo="120"/>
+      </direction>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="above">
+        <direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>90</per-minute></metronome></direction-type>
+        <sound tempo="90"/>
+      </direction>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <direction placement="above">
+        <direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>120</per-minute></metronome></direction-type>
+        <sound tempo="120"/>
+      </direction>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="above">
+        <direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>60</per-minute></metronome></direction-type>
+        <sound tempo="60"/>
+      </direction>
+      <note><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "tempo_per_part.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+
+    score = converter.parse(str(xml_path))
+
+    md0 = _collect_notes(score.parts[0], str(xml_path), 0)
+    md1 = _collect_notes(score.parts[1], str(xml_path), 1)
+
+    tempo_changes0 = [ev.tempo_change for ev in md0[1].voices[0] if ev.tempo_change is not None]
+    tempo_changes1 = [ev.tempo_change for ev in md1[1].voices[0] if ev.tempo_change is not None]
+
+    assert tempo_changes0 == [90]  # 파트 0(part_index=0)의 곡중간 템포 변화는 그대로 반영
+    assert tempo_changes1 == []    # 파트 1(part_index=1)은 자체 템포 표기가 있어도 무시해야 함
