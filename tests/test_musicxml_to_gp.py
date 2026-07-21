@@ -2527,3 +2527,120 @@ def test_musicxml_to_gp5_single_part_unchanged(tmp_path):
 
     song = guitarpro.parse(out)
     assert len(song.tracks) == 1
+
+
+def test_completely_empty_measure_is_logged(tmp_path, caplog):
+    """Audiveris가 어떤 마디에서 음표/쉼표를 하나도 인식 못 하면(완전히 빈
+    <measure/>), 조용히 빈 마디로 채우지만 말고 경고 로그를 남겨야 한다 —
+    실사용 중 재현: 기타 듀엣 PDF에서 인식 실패로 통째로 빈 마디가 나왔는데
+    아무 표시 없이 그냥 쉼표 마디처럼 보여서 사용자가 인식 실패를 알아챌
+    방법이 없었다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="2"/>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "empty_measure.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "empty_measure.gp5")
+
+    with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
+        musicxml_to_gp5(str(xml_path), out)
+
+    assert any("2" in r.message and "인식" in r.message for r in caplog.records)
+
+
+def test_more_than_two_voices_in_measure_is_logged(tmp_path, caplog):
+    """한 마디에 보이스가 3개 이상이면 GP5 한계상 2개까지만 반영하고
+    나머지는 버리는데, 지금까지는 아무 경고 없이 조용히 버려졌다 — 실사용
+    중 다성부 마디에서 성부 하나가 통째로 사라져도 알 방법이 없었다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type><voice>1</voice></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>4</duration><type>whole</type><voice>2</voice></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><type>whole</type><voice>3</voice></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "three_voices.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "three_voices.gp5")
+
+    with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
+        musicxml_to_gp5(str(xml_path), out)
+
+    assert any("3" in r.message and "보이스" in r.message for r in caplog.records)
+
+
+def test_out_of_range_trill_target_is_logged(tmp_path, caplog):
+    """<trill-mark> 대체음이 어떤 현으로도(0~24 프렛) 표현 못 하면(최고음역대
+    음표에서 실제로 발생), 트릴 없이 조용히 건너뛰지만 말고 경고를 남겨야
+    한다. C장조에서 E(온음계상 F로 반음 위 이웃)가 이미 string1 fret24라
+    트릴 목표(F, fret25)가 범위를 벗어난다(직접 실행으로 확인된 케이스)."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+      <key><fifths>0</fifths></key></attributes>
+      <note><pitch><step>E</step><octave>7</octave></pitch><duration>4</duration><type>whole</type>
+        <notations><ornaments><trill-mark/></ornaments></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "trill_out_of_range.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "trill_out_of_range.gp5")
+
+    with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
+        musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.trill is None
+    assert any("트릴" in r.message for r in caplog.records)
+
+
+def test_out_of_range_grace_note_is_logged(tmp_path, caplog):
+    """꾸밈음이 어떤 현으로도 표현 못 하면(너무 낮은 음역대) 조용히 건너뛰지
+    말고 경고를 남겨야 한다."""
+    xml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><time><beats>2</beats><beat-type>2</beat-type></time></attributes>
+      <note>
+        <grace slash="yes"/>
+        <pitch><step>C</step><octave>2</octave></pitch>
+        <type>eighth</type>
+      </note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>"""
+    xml_path = tmp_path / "grace_out_of_range.musicxml"
+    xml_path.write_text(xml_text, encoding="utf-8")
+    out = str(tmp_path / "grace_out_of_range.gp5")
+
+    with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
+        musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert note.effect.grace is None
+    assert any("꾸밈음" in r.message for r in caplog.records)

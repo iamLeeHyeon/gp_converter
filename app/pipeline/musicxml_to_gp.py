@@ -731,6 +731,28 @@ def _scan_raw_technicals(
     return result
 
 
+def _find_empty_measure_numbers(xml_path: str, part_index: int = 0) -> Set[int]:
+    """원본 MusicXML에서 자식 엘리먼트가 하나도 없는 완전히 빈 <measure/>의
+    번호 목록을 반환한다.
+
+    music21은 파싱 과정에서 이런 마디를 자동으로 온마디쉼표로 채워버리기
+    때문에(Rest 삽입), music21 파싱 결과만 보면 원래 있던 정상 쉼표 마디와
+    구분이 안 된다 — Audiveris가 그 마디를 아예 인식하지 못한 신호를
+    놓치지 않으려면 raw XML을 따로 봐야 한다(실사용 중 재현: Audiveris가
+    인식 실패한 마디가 아무 표시 없이 평범한 쉼표 마디처럼 보였다).
+    """
+    root = _read_xml_root(xml_path)
+    parts = root.findall("part")
+    target_part = parts[part_index] if 0 <= part_index < len(parts) else None
+    if target_part is None:
+        return set()
+    return {
+        int(measure.get("number"))
+        for measure in target_part.findall("measure")
+        if len(measure) == 0
+    }
+
+
 def _collect_notes(part, xml_path: str, part_index: int = 0) -> List[MeasureData]:
     """지정된 파트에서 마디 단위 (박자, 조표, 보이스별 음표/쉼표) 목록을 추출한다.
 
@@ -768,6 +790,11 @@ def _collect_notes(part, xml_path: str, part_index: int = 0) -> List[MeasureData
     except Exception:
         logger.warning("곡중간 템포 변화 추출 실패 — 해당 이펙트 없이 계속 진행", exc_info=True)
         tempo_changes = {}
+    try:
+        empty_measure_numbers = _find_empty_measure_numbers(xml_path, part_index)
+    except Exception:
+        logger.warning("빈 마디 스캔 실패 — 빈 마디 경고 없이 계속 진행", exc_info=True)
+        empty_measure_numbers = set()
     measures = list(part.getElementsByClass(m21stream.Measure))
 
     repeat_alt_by_measure: Dict[int, int] = {}
@@ -814,7 +841,13 @@ def _collect_notes(part, xml_path: str, part_index: int = 0) -> List[MeasureData
                 break
 
         expected_ql = numerator * 4.0 / denominator
-        voice_streams = list(m.voices)[:2] if m.hasVoices() else [m]
+        all_voice_streams = list(m.voices) if m.hasVoices() else [m]
+        if len(all_voice_streams) > 2:
+            logger.warning(
+                "마디 %s: 보이스가 %d개라 GP5가 지원하는 2개까지만 반영하고 나머지는 버림",
+                m.number, len(all_voice_streams),
+            )
+        voice_streams = all_voice_streams[:2]
         voices_events = [
             _drop_phantom_leading_rest(
                 _extract_events(
@@ -836,6 +869,13 @@ def _collect_notes(part, xml_path: str, part_index: int = 0) -> List[MeasureData
         for ev in voices_events[0]:
             if ev.velocity is not None:
                 running_velocity = ev.velocity
+
+        if m.number in empty_measure_numbers:
+            logger.warning(
+                "마디 %s: 원본에 음표/쉼표가 하나도 없는 완전히 빈 마디 — "
+                "Audiveris가 이 마디를 인식하지 못했을 수 있음",
+                m.number,
+            )
 
         result.append(MeasureData(
             numerator, denominator, key_fifths, voices_events,
@@ -1054,6 +1094,11 @@ def _build_song(
                     gnote.effect.trill = gpm.TrillEffect(
                         fret=trill_fret, duration=gpm.Duration(value=gpm.Duration.sixteenth),
                     )
+                else:
+                    logger.warning(
+                        "트릴 대상 프렛이 범위(0~24) 밖(%d)이라 트릴 효과 없이 건너뜀",
+                        trill_fret,
+                    )
             if ev.grace is not None and len(ev.pitches) == 1:
                 grace_midi, transition_name = ev.grace
                 sf_grace = _midi_to_string_fret(grace_midi, strings)
@@ -1066,6 +1111,10 @@ def _build_song(
                     )
                     gnote.effect.grace = gpm.GraceEffect(
                         duration=32, fret=grace_fret, transition=trans
+                    )
+                else:
+                    logger.warning(
+                        "꾸밈음 MIDI %d는 어떤 현으로도 표현할 수 없어 건너뜀", grace_midi
                     )
             beat.notes = [gnote]
             beats.append(beat)
