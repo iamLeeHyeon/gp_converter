@@ -863,17 +863,26 @@ def _collect_notes(part, xml_path: str, part_index: int = 0) -> List[MeasureData
 
 
 def _build_song(
-    measures_data: List[MeasureData],
+    measures_data_by_track: List[List[MeasureData]],
     tab_hints: Optional[List[Tuple[int, int]]] = None,
 ) -> guitarpro.Song:
-    """마디 목록으로 GP Song 객체를 생성한다.
+    """트랙(파트)별 마디 목록으로 GP Song 객체를 생성한다.
 
-    tab_hints는 주 멜로디(voices[0])의 음표 개수(쉼표 제외)와 같을 때만, 그
-    보이스에 명시적 (현,프렛)을 쓴다. 두 번째 보이스는 항상 휴리스틱을 쓴다
-    (탭보표는 한 줄짜리 멜로디만 읽으므로 다성에는 대응 불가).
+    measures_data_by_track[0](파트 0)의 박자표/조표/반복표 열기·닫기/volta/
+    direction만 song.measureHeaders에 반영한다 — 같은 곡의 여러 파트가 서로
+    다른 마디 구조(박자표 등)를 갖는 일은 실무상 없다고 가정하기 때문이다.
+    measures_data_by_track[1:]의 동일 필드는 무시하고 음표 내용만 각자의
+    트랙에 채운다. 모든 트랙은 표준 6현 어쿠스틱 기타 튜닝을 그대로 쓴다
+    (파트별 악기 인식은 하지 않음).
+
+    tab_hints는 주 멜로디(measures_data_by_track[0]의 voices[0])의 음표
+    개수(쉼표 제외)와 같을 때만, 그 트랙의 그 보이스에 명시적 (현,프렛)을
+    쓴다. 나머지 트랙/보이스는 항상 휴리스틱을 쓴다(탭보표는 한 줄짜리
+    멜로디만 읽으므로 다성/다중트랙에는 대응 불가).
     """
+    first_track_data = measures_data_by_track[0]
     total_notes = sum(
-        1 for m in measures_data for ev in m.voices[0]
+        1 for m in first_track_data for ev in m.voices[0]
         if not ev.is_rest and len(ev.pitches) == 1
     )
     if tab_hints is not None and len(tab_hints) != total_notes:
@@ -896,7 +905,7 @@ def _build_song(
     def _next_hint() -> Optional[Tuple[int, int]]:
         return next(hints_iter) if hints_iter is not None else None
 
-    if not measures_data:
+    if not first_track_data:
         return song
 
     def _apply_header(mh: gpm.MeasureHeader, md: MeasureData) -> None:
@@ -1081,10 +1090,10 @@ def _build_song(
 
         voice.beats = beats
 
-    def _fill_measure(measure: gpm.Measure, md: MeasureData) -> None:
+    def _fill_measure(measure: gpm.Measure, md: MeasureData, allow_hints: bool) -> None:
         for vi, events in enumerate(md.voices):
             _fill_voice(
-                measure.voices[vi], events, use_hints=(vi == 0),
+                measure.voices[vi], events, use_hints=(vi == 0 and allow_hints),
                 numerator=md.numerator, denominator=md.denominator,
             )
         if md.chord_name is not None and measure.voices[0].beats:
@@ -1092,24 +1101,50 @@ def _build_song(
                 length=6, name=md.chord_name, show=False, firstFret=0,
             )
 
-    first_mh = song.measureHeaders[0]
-    first_measure = track.measures[0]
-    _apply_header(first_mh, measures_data[0])
-    _fill_measure(first_measure, measures_data[0])
+    def _build_track_measures(
+        cur_track: gpm.Track, measures_data: List[MeasureData],
+        build_headers: bool, allow_hints: bool,
+    ) -> None:
+        """이 트랙의 모든 마디에 음표를 채운다.
 
-    start = first_mh.start + first_mh.length
-    for i, md in enumerate(measures_data[1:], start=2):
-        mh = gpm.MeasureHeader()
-        mh.number = i
-        mh.start = start
-        _apply_header(mh, md)
-        song.measureHeaders.append(mh)
+        build_headers=True인 트랙(파트 0)만 song.measureHeaders를 새로 만들고
+        박자표/조표/반복표 등을 적용한다 — 나머지 트랙은 이미 만들어진 헤더를
+        그대로 재사용하고 음표만 채운다(곡 전체 마디 구조는 공유되므로).
+        """
+        first_mh = song.measureHeaders[0]
+        first_measure = cur_track.measures[0]
+        if build_headers:
+            _apply_header(first_mh, measures_data[0])
+        _fill_measure(first_measure, measures_data[0], allow_hints)
 
-        m = gpm.Measure(track, mh)
-        _fill_measure(m, md)
-        track.measures.append(m)
+        start = first_mh.start + first_mh.length
+        for i, md in enumerate(measures_data[1:], start=2):
+            if build_headers:
+                mh = gpm.MeasureHeader()
+                mh.number = i
+                mh.start = start
+                _apply_header(mh, md)
+                song.measureHeaders.append(mh)
+            else:
+                mh = song.measureHeaders[i - 1]
 
-        start += mh.length
+            m = gpm.Measure(cur_track, mh)
+            _fill_measure(m, md, allow_hints)
+            cur_track.measures.append(m)
+
+            start += mh.length
+
+    for idx, measures_data in enumerate(measures_data_by_track):
+        if idx == 0:
+            cur_track = track
+        else:
+            cur_track = gpm.Track(song, number=idx + 1)
+            song.tracks.append(cur_track)
+        _build_track_measures(
+            cur_track, measures_data,
+            build_headers=(idx == 0),
+            allow_hints=(idx == 0),
+        )
 
     return song
 

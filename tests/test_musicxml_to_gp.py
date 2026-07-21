@@ -284,7 +284,7 @@ def test_out_of_range_note_is_logged_and_skipped(caplog):
     ]
 
     with caplog.at_level("WARNING", logger="app.pipeline.musicxml_to_gp"):
-        song = _build_song(measures_data)
+        song = _build_song([measures_data])
 
     track = song.tracks[0]
     actual = [
@@ -298,6 +298,69 @@ def test_out_of_range_note_is_logged_and_skipped(caplog):
 
     assert len(caplog.records) == 1
     assert "30" in caplog.records[0].message
+
+
+def test_build_song_creates_one_track_per_part():
+    """measures_data_by_track에 파트가 2개 들어오면 song.tracks도 2개여야
+    하고, 각 트랙은 자기 파트의 음표만 담아야 한다(서로 섞이면 안 됨)."""
+    track0_data = [
+        MeasureData(
+            numerator=4, denominator=4, key_fifths=0,
+            voices=[[NoteEvent(pitches=[60], ql=4.0, tied=[False])]],  # C4
+        )
+    ]
+    track1_data = [
+        MeasureData(
+            numerator=4, denominator=4, key_fifths=0,
+            voices=[[NoteEvent(pitches=[67], ql=4.0, tied=[False])]],  # G4
+        )
+    ]
+
+    song = _build_song([track0_data, track1_data])
+
+    assert len(song.tracks) == 2
+    assert len(song.measureHeaders) == 1  # 곡 전체 마디헤더는 하나만(트랙끼리 공유)
+
+    def _notes(track):
+        return [
+            (note.string, note.value)
+            for measure in track.measures
+            for voice in measure.voices
+            for beat in voice.beats
+            for note in beat.notes
+        ]
+
+    notes0 = _notes(song.tracks[0])
+    notes1 = _notes(song.tracks[1])
+    # _assign_with_tie_carryover(strings=표준 튜닝)로 직접 확인된 배정값:
+    # MIDI60(C4) → (string2, fret1), MIDI67(G4) → (string1, fret3).
+    assert notes0 == [(2, 1)]
+    assert notes1 == [(1, 3)]
+    assert notes1 != notes0     # 핵심 검증: 두 트랙이 서로 다른 음표를 담아야 함(오염 없음)
+
+
+def test_build_song_second_track_ignores_own_header_fields():
+    """2번째 트랙의 박자표/반복표 등은 무시되고, song.measureHeaders는
+    첫 번째 트랙(파트 0) 기준으로만 정해져야 한다."""
+    track0_data = [
+        MeasureData(
+            numerator=4, denominator=4, key_fifths=0,
+            voices=[[NoteEvent(pitches=[60], ql=4.0, tied=[False])]],
+        )
+    ]
+    # 파트 1이 (실무상 없다고 가정하지만) 만약 다른 박자표를 갖고 있어도
+    # 곡 전체 헤더는 파트 0(4/4)을 따라야 한다.
+    track1_data = [
+        MeasureData(
+            numerator=3, denominator=4, key_fifths=2,
+            voices=[[NoteEvent(pitches=[67], ql=3.0, tied=[False])]],
+        )
+    ]
+
+    song = _build_song([track0_data, track1_data])
+
+    assert song.measureHeaders[0].timeSignature.numerator == 4
+    assert song.measureHeaders[0].timeSignature.denominator.value == 4
 
 
 def test_tab_hints_ignored_when_string_number_invalid(tmp_path):
