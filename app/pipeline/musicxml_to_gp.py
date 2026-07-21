@@ -1110,6 +1110,13 @@ def _build_song(
         build_headers=True인 트랙(파트 0)만 song.measureHeaders를 새로 만들고
         박자표/조표/반복표 등을 적용한다 — 나머지 트랙은 이미 만들어진 헤더를
         그대로 재사용하고 음표만 채운다(곡 전체 마디 구조는 공유되므로).
+
+        build_headers=False인 트랙은 gpm.Track 생성 시점에 이미
+        song.measureHeaders(트랙 0이 먼저 다 만들어놓음) 개수만큼 빈 Measure
+        스텁이 자동으로 채워져 있다(PyGuitarPro Track 생성자 동작) — 그래서
+        여기서 새 Measure를 만들어 append하면 안 되고, 이미 존재하는 스텁을
+        인덱스로 찾아 그 자리에서 채워야 한다(안 그러면 실제 내용이 뒤로 밀려
+        GP5 writer가 못 읽는 위치에 남는 버그가 생긴다).
         """
         first_mh = song.measureHeaders[0]
         first_measure = cur_track.measures[0]
@@ -1125,13 +1132,13 @@ def _build_song(
                 mh.start = start
                 _apply_header(mh, md)
                 song.measureHeaders.append(mh)
+                m = gpm.Measure(cur_track, mh)
+                cur_track.measures.append(m)
             else:
                 mh = song.measureHeaders[i - 1]
+                m = cur_track.measures[i - 1]
 
-            m = gpm.Measure(cur_track, mh)
             _fill_measure(m, md, allow_hints)
-            cur_track.measures.append(m)
-
             start += mh.length
 
     for idx, measures_data in enumerate(measures_data_by_track):

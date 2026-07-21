@@ -382,6 +382,41 @@ def test_tab_hints_ignored_when_string_number_invalid(tmp_path):
     assert actual == [(5, 3), (4, 0), (4, 2), (4, 3), (3, 0), (3, 2), (2, 0), (2, 1)]
 
 
+def test_build_song_second_track_keeps_all_measures():
+    """2번째 이후 트랙도 마디가 여러 개면 전부(첫 마디 이후 것도) 실제로
+    채워져야 한다 — PyGuitarPro의 Track 생성자가 이미 만들어둔 빈 마디
+    스텁 위에 내용 없는 새 마디를 얹어버리면(과거 버그), GP5 writer가
+    실제 채워진 마디를 못 읽고 앞쪽 빈 스텁만 읽어서 2번째 마디 이후가
+    통째로 무음이 된다."""
+    track0_data = [
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[60], ql=4.0, tied=[False])]]),
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[62], ql=4.0, tied=[False])]]),
+    ]
+    track1_data = [
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[67], ql=4.0, tied=[False])]]),
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[69], ql=4.0, tied=[False])]]),
+    ]
+
+    song = _build_song([track0_data, track1_data])
+
+    assert len(song.tracks[1].measures) == 2
+
+    def _notes(measure):
+        return [
+            (note.string, note.value)
+            for voice in measure.voices
+            for beat in voice.beats
+            for note in beat.notes
+        ]
+
+    assert _notes(song.tracks[1].measures[0]) != []
+    assert _notes(song.tracks[1].measures[1]) != []  # 버그 있었으면 여기가 빈 리스트였음
+
+
 def test_parse_failure_has_specific_message(tmp_path):
     """MusicXML 파싱 자체가 실패하면 그 사실이 메시지에 드러나야 한다."""
     out = str(tmp_path / "out.gp5")
