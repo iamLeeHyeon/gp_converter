@@ -1141,6 +1141,18 @@ def _build_song(
             _fill_measure(m, md, allow_hints)
             start += mh.length
 
+    # 파트 간 마디 개수 검증: 모든 파트가 같은 마디 구조를 가져야 한다.
+    # 파트 0보다 마디가 많으면 IndexError → 크래시, 적으면 조용히 무음
+    # (실전 입력인 Audiveris OMR은 스태프별 인식 오차로 마디 수가 어긋날 수 있다).
+    first_track_len = len(first_track_data)
+    for i, measures_data in enumerate(measures_data_by_track[1:], start=1):
+        if len(measures_data) != first_track_len:
+            raise ValueError(
+                f"파트별 마디 수가 다름(파트0={first_track_len}마디, "
+                f"파트{i}={len(measures_data)}마디) — 다중 트랙 변환은 모든 파트의 "
+                "마디 구조가 같다고 가정한다"
+            )
+
     for idx, measures_data in enumerate(measures_data_by_track):
         if idx == 0:
             cur_track = track

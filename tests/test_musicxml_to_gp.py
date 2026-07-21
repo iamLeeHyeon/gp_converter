@@ -417,6 +417,43 @@ def test_build_song_second_track_keeps_all_measures():
     assert _notes(song.tracks[1].measures[1]) != []  # 버그 있었으면 여기가 빈 리스트였음
 
 
+def test_build_song_raises_when_second_track_has_fewer_measures():
+    """파트 0보다 마디가 적은 파트가 있으면 조용히 잘리지 않고 명확히
+    실패해야 한다(실전 입력인 Audiveris OMR은 스태프별 인식 오차로 마디 수가
+    어긋날 수 있다 — 조용한 데이터 손실보다 명확한 실패가 낫다)."""
+    track0_data = [
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[60], ql=4.0, tied=[False])]]),
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[62], ql=4.0, tied=[False])]]),
+    ]
+    track1_data = [
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[67], ql=4.0, tied=[False])]]),
+    ]
+
+    with pytest.raises(ValueError, match="마디 수가 다름"):
+        _build_song([track0_data, track1_data])
+
+
+def test_build_song_raises_when_second_track_has_more_measures():
+    """파트 0보다 마디가 많은 파트가 있어도 IndexError로 죽는 대신 명확히
+    실패해야 한다."""
+    track0_data = [
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[60], ql=4.0, tied=[False])]]),
+    ]
+    track1_data = [
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[67], ql=4.0, tied=[False])]]),
+        MeasureData(numerator=4, denominator=4, key_fifths=0,
+                    voices=[[NoteEvent(pitches=[69], ql=4.0, tied=[False])]]),
+    ]
+
+    with pytest.raises(ValueError, match="마디 수가 다름"):
+        _build_song([track0_data, track1_data])
+
+
 def test_parse_failure_has_specific_message(tmp_path):
     """MusicXML 파싱 자체가 실패하면 그 사실이 메시지에 드러나야 한다."""
     out = str(tmp_path / "out.gp5")
