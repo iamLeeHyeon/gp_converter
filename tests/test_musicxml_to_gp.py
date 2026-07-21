@@ -2425,3 +2425,68 @@ def test_collect_notes_only_computes_tempo_changes_for_part_zero(tmp_path):
 
     assert tempo_changes0 == [90]  # 파트 0(part_index=0)의 곡중간 템포 변화는 그대로 반영
     assert tempo_changes1 == []    # 파트 1(part_index=1)은 자체 템포 표기가 있어도 무시해야 함
+
+
+_TWO_PART_GUITAR_DUET_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Guitar 1</part-name></score-part>
+    <score-part id="P2"><part-name>Guitar 2</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch>
+        <duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <note><pitch><step>E</step><octave>4</octave></pitch>
+        <duration>4</duration><type>whole</type>
+        <notations><technical><bend><bend-alter>2</bend-alter></bend></technical></notations>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"""
+
+
+def test_musicxml_to_gp5_creates_track_per_part(tmp_path):
+    """파트 2개짜리(기타 듀엣) MusicXML을 변환하면 GP5에 트랙이 2개 생기고,
+    각 트랙이 자기 파트의 음표/이펙트만 담아야 한다(다른 트랙으로 안 샘)."""
+    xml_path = tmp_path / "duet.musicxml"
+    xml_path.write_text(_TWO_PART_GUITAR_DUET_XML, encoding="utf-8")
+    out = str(tmp_path / "duet.gp5")
+
+    musicxml_to_gp5(str(xml_path), out)
+
+    song = guitarpro.parse(out)
+    assert len(song.tracks) == 2
+
+    def _first_note(track):
+        return track.measures[0].voices[0].beats[0].notes[0]
+
+    note0 = _first_note(song.tracks[0])
+    note1 = _first_note(song.tracks[1])
+
+    # 실제(sounding) MIDI는 기타 표기 관행상 적힌 음보다 1옥타브 낮다.
+    # note0: 적힌 C5(72) → 소리 C4(60). note1: 적힌 E4(64) → 소리 E3(52).
+    assert note0.effect.bend is None
+    assert note1.effect.bend is not None  # 파트2에만 있던 벤드가 트랙2에만 적용돼야 함
+    assert note0.string != note1.string or note0.value != note1.value  # 서로 다른 음
+
+
+def test_musicxml_to_gp5_single_part_unchanged(tmp_path):
+    """파트 1개짜리 기존 fixture는 여전히 트랙 1개만 만들어야 한다(회귀 없음)."""
+    out = str(tmp_path / "single.gp5")
+    musicxml_to_gp5(FIXTURE, out)
+
+    song = guitarpro.parse(out)
+    assert len(song.tracks) == 1

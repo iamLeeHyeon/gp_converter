@@ -1192,17 +1192,23 @@ def musicxml_to_gp5(
         raise GpConvertError("MusicXML 파싱 실패") from e
 
     try:
-        measures_data = _collect_notes(score, xml_path)
+        measures_data_by_track = [
+            _collect_notes(part, xml_path, i) for i, part in enumerate(score.parts)
+        ]
     except Exception as e:
         raise GpConvertError("음표 추출 실패") from e
 
     if not any(
-        not ev.is_rest for m in measures_data for voice_events in m.voices for ev in voice_events
+        not ev.is_rest
+        for measures_data in measures_data_by_track
+        for m in measures_data
+        for voice_events in m.voices
+        for ev in voice_events
     ):
         raise GpConvertError("변환할 음표 없음")
 
     try:
-        song = _build_song(measures_data, tab_hints=tab_hints)
+        song = _build_song(measures_data_by_track, tab_hints=tab_hints)
     except Exception as e:
         raise GpConvertError("GP5 쓰기 실패") from e
 
