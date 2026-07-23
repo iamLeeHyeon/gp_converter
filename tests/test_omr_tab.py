@@ -38,6 +38,35 @@ def test_crop_tab_systems_saves_pngs(tmp_path):
     assert mock_pixmap.save.call_count == 2
 
 
+def test_crop_tab_systems_clamps_margin_for_close_neighbor(tmp_path):
+    """같은 페이지에 인접 시스템이 가까이 있으면(밀집 조판), 크롭 마진이
+    이웃 시스템 영역을 침범하지 않도록 제한돼야 한다 — 고정 마진(상단
+    1.5배/하단 0.5배)을 그대로 쓰면 시스템 간격이 좁을 때 이웃 시스템의
+    프렛 숫자까지 크롭 이미지에 같이 들어가서 OMR 인식을 흐릴 수 있다."""
+    from app.pipeline.omr_tab import crop_tab_systems
+
+    regions = [
+        TabStaffRegion(page_index=0, line_ys=[700.0, 690.0, 680.0, 670.0, 660.0, 650.0]),
+        TabStaffRegion(page_index=0, line_ys=[630.0, 620.0, 610.0, 600.0, 590.0, 580.0]),
+    ]
+    clips_dir = str(tmp_path / "clips")
+
+    mock_doc = MagicMock()
+    mock_page = MagicMock()
+    mock_page.rect.height = 841.0
+    mock_page.rect.width = 595.0
+    mock_page.get_pixmap.return_value = MagicMock()
+    mock_doc.__getitem__ = MagicMock(return_value=mock_page)
+
+    with patch("fitz.open", return_value=mock_doc):
+        crop_tab_systems("dummy.pdf", regions, clips_dir)
+
+    clip_a = mock_page.get_pixmap.call_args_list[0].kwargs["clip"]
+    clip_b = mock_page.get_pixmap.call_args_list[1].kwargs["clip"]
+    # region A(위)의 크롭 하단이 region B(아래)의 크롭 상단을 넘어가면 안 됨
+    assert clip_a.y1 <= clip_b.y0 + 0.01
+
+
 def test_crop_tab_systems_clips_dir_created(tmp_path):
     """clips_dir가 없어도 자동 생성돼야 한다."""
     from app.pipeline.omr_tab import crop_tab_systems

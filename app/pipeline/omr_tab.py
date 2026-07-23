@@ -63,6 +63,21 @@ def crop_tab_systems(
             top_margin = staff_height * 1.5
             bot_margin = staff_height * 0.5
 
+            # 같은 페이지의 다른 시스템과 마진이 겹치지 않도록 제한한다 —
+            # 시스템 간격이 좁은 밀집 조판에서는 고정 마진이 이웃 시스템의
+            # 프렛 숫자까지 크롭에 끌어들여 OMR 인식을 흐릴 수 있다.
+            for other in regions:
+                if other is region or other.page_index != region.page_index:
+                    continue
+                other_top = max(other.line_ys)
+                other_bot = min(other.line_ys)
+                if other_bot >= y_top_pm:
+                    gap = other_bot - y_top_pm
+                    top_margin = min(top_margin, max(gap / 2, 0))
+                elif other_top <= y_bot_pm:
+                    gap = y_bot_pm - other_top
+                    bot_margin = min(bot_margin, max(gap / 2, 0))
+
             # pymupdf: y0=위(작은 값), y1=아래(큰 값)
             rect_y0 = page_height - (y_top_pm + top_margin)
             rect_y1 = page_height - (y_bot_pm - bot_margin)
