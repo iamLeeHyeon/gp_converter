@@ -18,7 +18,8 @@ guitar-tab-omr tokenText → Guitar Pro 5 변환기
   NTECH_SLIDE_OUT_{1|2|4}         슬라이드 아웃 (1=shift, 2=legato, 4=outUp)
   NTECH_SLIDE_IN_{1|2}            슬라이드 인 (1=fromBelow, 2=fromAbove)
   NTECH_GHOST                     고스트 노트
-  NTECH_HARMONIC_VALUE_{n}        하모닉스
+  NTECH_HARMONIC_{NATURAL|ARTIFICIAL|PINCH|SEMI|TAP|FEEDBACK}  하모닉스 종류
+  NTECH_HARMONIC_VALUE_{n}        하모닉스 프렛/노드 값(종류와 별개 토큰)
   TUPLET_3_2                      셋잇단음 (미지원, 스킵)
 """
 from __future__ import annotations
@@ -57,6 +58,16 @@ _SLIDE_IN_MAP: dict = {
     "2": SlideType.intoFromAbove,
 }
 
+# harmonic_type → PyGuitarPro 하모닉 클래스. 'feedback'과 미지정(None)은 GP5에
+# 대응 타입이 없어 가장 가까운 natural로 대체한다(과거부터의 기본 동작 유지).
+_HARMONIC_TYPE_TO_GP: dict = {
+    "natural": gpm.NaturalHarmonic,
+    "artificial": gpm.ArtificialHarmonic,
+    "pinch": gpm.PinchHarmonic,
+    "semi": gpm.SemiHarmonic,
+    "tap": gpm.TappedHarmonic,
+}
+
 
 def _pad_voice_with_rests(voice: gpm.Voice, remaining: float) -> None:
     """마디의 남은 용량을 쉼표 비트로 채운다. voice가 완전히 비면 4분쉼표 하나를 넣는다."""
@@ -89,6 +100,7 @@ class _NoteData:
     is_tie: bool = False
     is_ghost: bool = False
     is_harmonic: bool = False
+    harmonic_type: Optional[str] = None  # 'natural'|'artificial'|'pinch'|'semi'|'tap'|'feedback'
     legato: bool = False
     slides: List[SlideType] = field(default_factory=list)
 
@@ -124,6 +136,12 @@ def _apply_ntech(token: str, beat: _BeatData) -> None:
         note.legato = True
     elif token == "NTECH_GHOST":
         note.is_ghost = True
+    elif token in (
+        "NTECH_HARMONIC_NATURAL", "NTECH_HARMONIC_ARTIFICIAL", "NTECH_HARMONIC_PINCH",
+        "NTECH_HARMONIC_SEMI", "NTECH_HARMONIC_TAP", "NTECH_HARMONIC_FEEDBACK",
+    ):
+        note.is_harmonic = True
+        note.harmonic_type = token[len("NTECH_HARMONIC_"):].lower()
     elif token.startswith("NTECH_HARMONIC_VALUE_"):
         note.is_harmonic = True
     elif token.startswith("NTECH_SLIDE_OUT_"):
@@ -271,10 +289,12 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
         for bdata in mdata.beats:
             units = _beat_units(bdata)
             if accumulated + units > expected + 0.01:
-                # 마디 용량 초과 — 해당 비트부터 버림
+                # 마디 용량 초과 — 이 비트 하나만 버리고 계속 진행한다(OMR이
+                # 비트 하나의 길이를 잘못 읽은 경우, 그 뒤에 이어지는 정상
+                # 비트들까지 통째로 버려지면 안 되므로 break 대신 skip한다).
                 logger.warning("마디 용량 초과 비트 제거: dur=%s (%.1f/%.1f units)",
                                bdata.duration_value, accumulated, expected)
-                break
+                continue
             accumulated += units
 
             beat = Beat(voice)
@@ -310,7 +330,8 @@ def _build_gp5_song(measures: List[_MeasureData]) -> guitarpro.Song:
                     if nd.is_ghost:
                         gnote.effect.ghostNote = True
                     if nd.is_harmonic:
-                        gnote.effect.harmonic = gpm.NaturalHarmonic()
+                        harmonic_cls = _HARMONIC_TYPE_TO_GP.get(nd.harmonic_type, gpm.NaturalHarmonic)
+                        gnote.effect.harmonic = harmonic_cls()
 
                     beat.notes.append(gnote)
 
@@ -391,8 +412,10 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
             base = _DUR_UNITS.get(dur_val, 16)
             units = base * 1.5 if is_dotted else float(base)
             if accumulated + units > expected + 0.01:
+                # 이 비트 하나만 버리고 계속 진행(이유는 _fill_measure 참고 —
+                # 비트 하나 잘못 읽었다고 그 뒤 전부를 버리면 안 됨).
                 logger.warning("snapshot 마디 초과 비트 제거: dur=%s", dur_val)
-                break
+                continue
             accumulated += units
 
             beat = Beat(voice)
@@ -423,6 +446,11 @@ def snapshot_to_gp5(snapshot: dict, out_path: str) -> str:
                         gnote.effect.ghostNote = True
                         gnote.type = NoteType.normal
                     elif eff == "harmonic":
+                        # ponytail: scoreSerializer.ts의 getNoteEffect가 alphaTab의
+                        # HarmonicType(natural/artificial/pinch/tap/semi)을 전부
+                        # 'harmonic' 문자열 하나로 뭉개서 넘기므로, 여기선 애초에
+                        # 종류를 구분할 정보가 없다. 프론트엔드 스냅샷 스키마에
+                        # harmonicType을 추가하면 해소 가능(트릴/운지법과 동일 패턴).
                         gnote.effect.harmonic = gpm.NaturalHarmonic()
                         gnote.type = NoteType.normal
                     elif eff in _SLIDE_MAP:

@@ -467,3 +467,67 @@ def test_snapshot_to_gp5_empty_raises(tmp_path):
 
     with pytest.raises(ValueError, match="트랙"):
         snapshot_to_gp5({"tracks": []}, str(tmp_path / "out.gp5"))
+
+
+def test_gp5_harmonic_type_preserved(tmp_path):
+    """NTECH_HARMONIC_{NATURAL|ARTIFICIAL|PINCH|SEMI|TAP} 타입 토큰에 맞는
+    PyGuitarPro 하모닉 클래스로 저장돼야 한다 — 이전엔 타입 토큰 자체를
+    아예 처리하지 않아서(알 수 없는 NTECH 토큰으로 스킵됨) 어떤 하모닉
+    기법이든 전부 NaturalHarmonic으로 뭉개져 저장됐다(핀치/아티피셜 하모닉
+    정보 소실)."""
+    import guitarpro
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = (
+        "TS_4_4\nBAR\n"
+        "BEAT DUR_4 N_S3_F12 NTECH_HARMONIC_ARTIFICIAL NTECH_HARMONIC_VALUE_12\n"
+        "BEAT DUR_4 N_S3_F12 NTECH_HARMONIC_PINCH NTECH_HARMONIC_VALUE_12\n"
+        "BEAT DUR_4 N_S3_F12 NTECH_HARMONIC_NATURAL NTECH_HARMONIC_VALUE_12\n"
+        "END_BAR\n"
+    )
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    beats = song.tracks[0].measures[0].voices[0].beats
+    assert isinstance(beats[0].notes[0].effect.harmonic, guitarpro.models.ArtificialHarmonic)
+    assert isinstance(beats[1].notes[0].effect.harmonic, guitarpro.models.PinchHarmonic)
+    assert isinstance(beats[2].notes[0].effect.harmonic, guitarpro.models.NaturalHarmonic)
+
+
+def test_measure_overflow_skips_only_offending_beat(tmp_path):
+    """마디 용량을 초과하는 비트 하나 때문에 그 뒤에 이어지는 정상 비트들까지
+    통째로 버려지면 안 된다 — OMR이 비트 하나의 길이를 잘못 읽어도(예:
+    4분음표를 온음표로 오인식), 그 비트 하나만 건너뛰고 나머지는 그대로
+    반영해야 한다(이전엔 그 비트에서 break해서 뒤가 전부 사라졌다)."""
+    import guitarpro
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = (
+        "TS_4_4\nBAR\n"
+        "BEAT DUR_4 N_S1_F0\n"
+        "BEAT DUR_4 N_S1_F1\n"
+        "BEAT DUR_4 N_S1_F2\n"
+        "BEAT DUR_1 N_S1_F9\n"  # 48/64 용량 초과 온음표 — 잘못 인식된 비트
+        "BEAT DUR_4 N_S1_F3\n"  # 이 비트는 살아남아야 함
+        "END_BAR\n"
+    )
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    beats = song.tracks[0].measures[0].voices[0].beats
+    frets = [b.notes[0].value for b in beats if b.notes]
+    assert frets == [0, 1, 2, 3]
+
+
+def test_gp5_harmonic_value_only_falls_back_to_natural(tmp_path):
+    """타입 토큰 없이 NTECH_HARMONIC_VALUE_*만 있으면(회귀 없음 확인)
+    지금까지처럼 NaturalHarmonic으로 대체돼야 한다."""
+    import guitarpro
+    from app.pipeline.token_to_gp import token_texts_to_gp5
+
+    token_text = "TS_4_4\nBAR\nBEAT DUR_4 N_S3_F12 NTECH_HARMONIC_VALUE_12\nEND_BAR\n"
+    out = str(tmp_path / "out.gp5")
+    token_texts_to_gp5([token_text], out)
+    song = guitarpro.parse(out)
+    note = song.tracks[0].measures[0].voices[0].beats[0].notes[0]
+    assert isinstance(note.effect.harmonic, guitarpro.models.NaturalHarmonic)
