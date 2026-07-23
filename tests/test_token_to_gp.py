@@ -494,6 +494,29 @@ def test_gp5_harmonic_type_preserved(tmp_path):
     assert isinstance(beats[2].notes[0].effect.harmonic, guitarpro.models.NaturalHarmonic)
 
 
+def test_pad_voice_fills_exact_64th_remainder():
+    """남은 용량이 정확히 1/64분음표 하나뿐이면(64분음표 fill_units=1),
+    그 자리도 64분쉼표로 채워야 한다 — _DUR_FILL_ORDER에 64가 빠져있으면
+    이 마지막 1유닛을 못 채우고 마디 길이가 미세하게 부족해진다."""
+    import guitarpro.models as gpm
+    from guitarpro.models import BeatStatus
+    from guitarpro import Beat
+    from app.pipeline.token_to_gp import _pad_voice_with_rests
+
+    song = gpm.Song()
+    voice = song.tracks[0].measures[0].voices[0]
+    b = Beat(voice)
+    b.status = BeatStatus.normal
+    b.duration = gpm.Duration()
+    b.duration.value = 4
+    voice.beats = [b]
+
+    _pad_voice_with_rests(voice, 1.0)
+
+    assert [bt.duration.value for bt in voice.beats] == [4, 64]
+    assert voice.beats[1].status == BeatStatus.rest
+
+
 def test_measure_overflow_skips_only_offending_beat(tmp_path):
     """마디 용량을 초과하는 비트 하나 때문에 그 뒤에 이어지는 정상 비트들까지
     통째로 버려지면 안 된다 — OMR이 비트 하나의 길이를 잘못 읽어도(예:
