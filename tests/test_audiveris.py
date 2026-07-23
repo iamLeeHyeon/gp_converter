@@ -21,6 +21,29 @@ def test_success(tmp_path):
     assert os.path.exists(result)
 
 
+def test_zero_timeout_means_unlimited(tmp_path):
+    """timeout=0은 omr_tab.py._run_inference와 동일한 관례로 '무제한'을
+    의미해야 한다 — 지금까지는 subprocess.run(timeout=0)에 그대로 넘겨져서
+    0초 대기 후 즉시 TimeoutExpired가 나버렸다(실제로는 timeout=0이 호출될
+    일이 거의 없어서 발동하진 않았지만, 두 함수 간 관례가 어긋나 있었다)."""
+    pdf = tmp_path / "in.pdf"
+    pdf.write_bytes(b"%PDF-1.4 dummy")
+    out_dir = tmp_path / "out"
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        os.makedirs(out_dir, exist_ok=True)
+        (out_dir / "in.mxl").write_bytes(b"PK\x03\x04fake")
+        class R: returncode = 0; stdout = b""; stderr = b""
+        return R()
+
+    with patch("app.pipeline.audiveris.subprocess.run", side_effect=fake_run):
+        pdf_to_musicxml(str(pdf), str(out_dir), audiveris_cmd="audiveris", timeout=0)
+
+    assert captured["timeout"] is None
+
+
 def test_no_output_raises(tmp_path):
     pdf = tmp_path / "in.pdf"
     pdf.write_bytes(b"%PDF-1.4 dummy")

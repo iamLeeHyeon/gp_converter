@@ -48,7 +48,10 @@ def pdf_to_musicxml(pdf_path: str, out_dir: str, audiveris_cmd: str, timeout: in
         pdf_path,
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        # timeout=0은 omr_tab.py._run_inference와 동일한 관례로 "무제한"을
+        # 의미한다 — subprocess.run(timeout=0)에 그대로 넘기면 즉시
+        # TimeoutExpired가 나버린다(0초 대기 후 진행 상태만 확인하는 의미라서).
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout if timeout > 0 else None)
     except subprocess.TimeoutExpired as e:
         raise AudiverisError("악보 인식 시간 초과") from e
     if proc.returncode != 0:
