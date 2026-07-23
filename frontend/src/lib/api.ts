@@ -153,11 +153,12 @@ export const api = {
     await request<void>(`/files/${id}`, { method: 'DELETE' })
   },
 
-  async syncFile(fileId: string, snapshot: ScoreSnapshot): Promise<void> {
+  async syncFile(fileId: string, snapshot: ScoreSnapshot, opts?: { keepalive?: boolean }): Promise<void> {
     await request<{ ok: boolean }>(`/files/${fileId}/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(snapshot),
+      keepalive: opts?.keepalive,
     })
   },
 
