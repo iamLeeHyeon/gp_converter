@@ -234,7 +234,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 @router.post("/reset-password")
-def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db), _=Depends(rate_limit("reset-password"))):
     if len(body.new_password) < 8:
         raise HTTPException(status_code=400, detail="비밀번호는 8자 이상이어야 합니다.")
 

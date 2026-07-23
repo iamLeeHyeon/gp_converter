@@ -283,6 +283,17 @@ class TestResetPassword:
         r = client.post("/auth/reset-password", json={"token": "no-such-token", "new_password": "newpassword1"})
         assert r.status_code == 400
 
+    def test_reset_password_is_rate_limited(self):
+        """/auth/reset-password도 register/login/forgot-password처럼
+        rate_limit이 걸려있어야 한다 — 지금까지는 이 엔드포인트만 빠져있었다."""
+        from unittest.mock import MagicMock
+
+        fake_redis = MagicMock()
+        fake_redis.incr.return_value = 21  # RATE_LIMIT_MAX(20) 초과
+        with patch("app.rate_limit._redis_client", fake_redis):
+            r = client.post("/auth/reset-password", json={"token": "whatever", "new_password": "newpassword1"})
+        assert r.status_code == 429
+
     def test_reset_password_with_expired_token_fails(self):
         from datetime import datetime, timedelta, timezone
         db = SessionLocal()
