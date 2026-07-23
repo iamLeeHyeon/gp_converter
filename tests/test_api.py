@@ -71,6 +71,72 @@ def test_status_missing_job_404(tmp_path):
     assert client.get("/jobs/nope").status_code == 404
 
 
+def test_job_status_and_result_hidden_from_other_user(tmp_path):
+    """로그인 사용자가 만든 job은 다른 사용자가 job_id를 알아도 조회 못 해야
+    한다 — job_id가 uuid4라 추측은 어렵지만, 지금까진 인증 없이도 아무나
+    상태/결과물을 가져갈 수 있었다(다른 소유권 체크가 있는 엔드포인트들과
+    비대칭)."""
+    from app.database import SessionLocal
+    from app.models import User
+    from app.auth import create_access_token
+
+    client, m = make_client(tmp_path)
+    db = SessionLocal()
+    db.merge(User(id="jb-owner", email="owner@x.com", provider="google", provider_id="jb-owner"))
+    db.merge(User(id="jb-other", email="other@x.com", provider="google", provider_id="jb-other"))
+    db.commit()
+    db.close()
+
+    owner_token = create_access_token("jb-owner")
+    other_token = create_access_token("jb-other")
+
+    def fake_delay(jobs_dir, job_id, pdf_path, **kwargs):
+        from app.jobs import JobStore
+        store = JobStore(jobs_dir)
+        gp5 = tmp_path / "r.gp5"
+        gp5.write_bytes(b"FICHIER GUITAR PRO")
+        store.update(job_id, status=m.JobStatus.DONE, result_path=str(gp5))
+
+    with patch("app.main.process_job_task.delay", side_effect=fake_delay):
+        r = client.post(
+            "/convert",
+            files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+    job_id = r.json()["job_id"]
+
+    # 다른 사용자 토큰 → 404
+    assert client.get(f"/jobs/{job_id}", headers={"Authorization": f"Bearer {other_token}"}).status_code == 404
+    assert client.get(f"/jobs/{job_id}/result", headers={"Authorization": f"Bearer {other_token}"}).status_code == 404
+    # 익명(토큰 없음) → 404
+    assert client.get(f"/jobs/{job_id}").status_code == 404
+    assert client.get(f"/jobs/{job_id}/result").status_code == 404
+    # 소유자 본인 → 정상
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    assert client.get(f"/jobs/{job_id}", headers=owner_headers).status_code == 200
+    assert client.get(f"/jobs/{job_id}/result", headers=owner_headers).status_code == 200
+
+
+def test_anonymous_job_status_accessible_without_auth(tmp_path):
+    """익명(비로그인) 사용자가 만든 job은 지금처럼 인증 없이 조회 가능해야
+    한다(회귀 없음) — 익명 사용자에겐 다른 신원 확인 수단이 없다."""
+    client, m = make_client(tmp_path)
+
+    def fake_delay(jobs_dir, job_id, pdf_path, **kwargs):
+        from app.jobs import JobStore
+        store = JobStore(jobs_dir)
+        gp5 = tmp_path / "r.gp5"
+        gp5.write_bytes(b"FICHIER GUITAR PRO")
+        store.update(job_id, status=m.JobStatus.DONE, result_path=str(gp5))
+
+    with patch("app.main.process_job_task.delay", side_effect=fake_delay):
+        r = client.post("/convert", files={"file": ("a.pdf", b"%PDF-1.4 x", "application/pdf")})
+    job_id = r.json()["job_id"]
+
+    assert client.get(f"/jobs/{job_id}").status_code == 200
+    assert client.get(f"/jobs/{job_id}/result").status_code == 200
+
+
 def test_result_not_done_returns_409(tmp_path):
     # 큐 디스패치가 no-op이라 job은 "queued" 상태로 남는다
     def noop_delay(jobs_dir, job_id, pdf_path, **kwargs):

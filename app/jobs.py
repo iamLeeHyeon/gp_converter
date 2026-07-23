@@ -23,6 +23,7 @@ class Job:
     message: str = ""
     result_path: str = ""
     progress_pct: int = 0
+    user_id: Optional[str] = None
 
 
 class JobStore:
@@ -57,12 +58,12 @@ class JobStore:
             if mtime < cutoff:
                 shutil.rmtree(job_dir, ignore_errors=True)
 
-    def create(self) -> Job:
+    def create(self, user_id: Optional[str] = None) -> Job:
         self._sweep_stale_jobs()
         job_id = uuid.uuid4().hex
         workdir = os.path.join(self.root, job_id)
         os.makedirs(workdir, exist_ok=True)
-        job = Job(id=job_id, status=JobStatus.QUEUED, workdir=workdir)
+        job = Job(id=job_id, status=JobStatus.QUEUED, workdir=workdir, user_id=user_id)
         self._write(job)
         return job
 

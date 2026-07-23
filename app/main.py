@@ -79,7 +79,7 @@ async def convert(
                        f"파일을 삭제하거나 Pro로 업그레이드하세요.",
             )
 
-    job = store.create()
+    job = store.create(user_id=current_user.id if current_user else None)
     # 임시파일을 job.workdir 안에 만든다 — /tmp에 만들면 컨테이너 환경에 따라
     # 별도 마운트라 os.replace()가 "Invalid cross-device link"로 실패할 수 있다.
     fd, tmp_path = tempfile.mkstemp(prefix="upload_", suffix=".pdf", dir=job.workdir)
@@ -130,19 +130,40 @@ async def convert(
     return {"job_id": job.id, "file_id": file_id}
 
 
+def _check_job_access(job, current_user: Optional[User]) -> None:
+    """로그인 사용자가 만든 job은 그 사용자만 조회 가능해야 한다 — job_id가
+    uuid4라 추측은 어렵지만, 로그로 유출되는 등의 경로로 다른 사람이 job_id를
+    알게 되면 지금까지는 인증 없이도 상태/결과물을 그대로 가져갈 수 있었다.
+    익명(user_id 없음) job은 지금처럼 아무나 조회 가능(익명 사용자에겐 다른
+    신원 확인 수단이 없음). 존재 자체를 감추기 위해 403이 아니라 404로 응답한다.
+    """
+    if job.user_id is not None and (current_user is None or current_user.id != job.user_id):
+        raise HTTPException(status_code=404, detail="job 없음")
+
+
 @app.get("/jobs/{job_id}")
-async def job_status(job_id: str, store: JobStore = Depends(get_store)):
+async def job_status(
+    job_id: str,
+    store: JobStore = Depends(get_store),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
     job = store.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job 없음")
+    _check_job_access(job, current_user)
     return {"status": job.status.value, "message": job.message, "pct": job.progress_pct}
 
 
 @app.get("/jobs/{job_id}/result")
-async def job_result(job_id: str, store: JobStore = Depends(get_store)):
+async def job_result(
+    job_id: str,
+    store: JobStore = Depends(get_store),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
     job = store.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job 없음")
+    _check_job_access(job, current_user)
     if job.status != JobStatus.DONE or not job.result_path or not os.path.exists(job.result_path):
         raise HTTPException(status_code=409, detail="아직 결과 없음")
     return FileResponse(job.result_path, media_type="application/octet-stream", filename="score.gp5")

@@ -89,6 +89,19 @@ def test_progress_persists_across_read(tmp_path):
     assert reloaded.status == JobStatus.RUNNING
 
 
+def test_create_with_user_id(tmp_path):
+    store = JobStore(str(tmp_path))
+    job = store.create(user_id="u1")
+    assert job.user_id == "u1"
+    assert store.get(job.id).user_id == "u1"
+
+
+def test_create_without_user_id_defaults_none(tmp_path):
+    store = JobStore(str(tmp_path))
+    job = store.create()
+    assert job.user_id is None
+
+
 def test_create_sweeps_stale_job_dirs(tmp_path):
     """TTL이 지난 job 디렉토리는 새 job을 만들 때 자동으로 정리돼야 한다 —
     로그인 없이도 /convert를 무제한 호출할 수 있는데 정리 로직이 없으면
