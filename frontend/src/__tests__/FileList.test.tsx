@@ -31,3 +31,14 @@ test('파일 클릭 시 api.getGP5Buffer(fileId) 호출 후 onSelect 호출', as
   await vi.waitFor(() => expect(onSelect).toHaveBeenCalled())
   expect(api.getGP5Buffer).toHaveBeenCalledWith('1')
 })
+
+test('파일 열기 실패 시 unhandled rejection 없이 에러 메시지를 보여준다', async () => {
+  vi.mocked(api.getGP5Buffer).mockRejectedValueOnce(new Error('HTTP 404'))
+  const onSelect = vi.fn()
+  render(<FileList onSelect={onSelect} />)
+
+  await userEvent.click(screen.getByText('Song A'))
+
+  expect(await screen.findByText('"Song A" 파일을 여는 데 실패했습니다')).toBeInTheDocument()
+  expect(onSelect).not.toHaveBeenCalled()
+})

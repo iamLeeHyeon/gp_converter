@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useFileStore } from '../../store/fileStore'
 import { api } from '../../lib/api'
 
@@ -8,6 +8,7 @@ interface Props {
 
 export default function FileList({ onSelect }: Props) {
   const { files, loading, load, remove } = useFileStore()
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => { load() }, [load])
 
@@ -16,12 +17,18 @@ export default function FileList({ onSelect }: Props) {
 
   return (
     <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+      {error && <li style={{ color: '#ff8080', fontSize: 13, padding: '4px 0' }}>{error}</li>}
       {files.map((f) => (
         <li key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
           <button
             onClick={async () => {
-              const buf = await api.getGP5Buffer(f.id)
-              onSelect(buf, f.id)
+              setError(null)
+              try {
+                const buf = await api.getGP5Buffer(f.id)
+                onSelect(buf, f.id)
+              } catch {
+                setError(`"${f.name}" 파일을 여는 데 실패했습니다`)
+              }
             }}
             style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#ffffff' }}
           >
