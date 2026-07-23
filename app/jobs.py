@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import time
 import uuid
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -24,14 +26,39 @@ class Job:
 
 
 class JobStore:
-    def __init__(self, root: str):
+    def __init__(self, root: str, ttl_hours: float = 24.0):
         self.root = root
+        self.ttl_hours = ttl_hours
         os.makedirs(self.root, exist_ok=True)
 
     def _meta_path(self, job_id: str) -> str:
         return os.path.join(self.root, job_id, "job.json")
 
+    def _sweep_stale_jobs(self) -> None:
+        """TTL이 지난 job 디렉토리(PDF+중간산출물+결과물)를 지운다.
+
+        이 프로젝트엔 스케줄러(Celery beat 등)가 없어서, 새 job을 만들 때마다
+        기회적으로 훑어서 지운다 — 로그인 없이도 /convert를 무제한 호출할 수
+        있는데 정리 로직이 없으면 디스크가 무한히 누적된다. job.json의
+        mtime(마지막 상태 갱신 시각)을 기준으로 판단한다.
+        """
+        cutoff = time.time() - self.ttl_hours * 3600
+        try:
+            entries = os.listdir(self.root)
+        except OSError:
+            return
+        for entry in entries:
+            job_dir = os.path.join(self.root, entry)
+            meta_path = os.path.join(job_dir, "job.json")
+            try:
+                mtime = os.path.getmtime(meta_path)
+            except OSError:
+                continue
+            if mtime < cutoff:
+                shutil.rmtree(job_dir, ignore_errors=True)
+
     def create(self) -> Job:
+        self._sweep_stale_jobs()
         job_id = uuid.uuid4().hex
         workdir = os.path.join(self.root, job_id)
         os.makedirs(workdir, exist_ok=True)

@@ -5,10 +5,12 @@ def test_defaults(monkeypatch):
     monkeypatch.delenv("GPC_AUDIVERIS_CMD", raising=False)
     monkeypatch.delenv("GPC_MAX_UPLOAD_BYTES", raising=False)
     monkeypatch.delenv("GPC_STEP_TIMEOUT_SEC", raising=False)
+    monkeypatch.delenv("GPC_JOB_TTL_HOURS", raising=False)
     s = Settings()
     assert s.max_upload_bytes == 20 * 1024 * 1024
     assert s.step_timeout_sec == 600
     assert s.audiveris_cmd == "audiveris"
+    assert s.job_ttl_hours == 24.0
 
 def test_env_override(monkeypatch):
     monkeypatch.setenv("GPC_AUDIVERIS_CMD", "/opt/audiveris/bin/audiveris")

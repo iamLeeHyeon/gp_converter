@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest
 
@@ -86,3 +87,29 @@ def test_progress_persists_across_read(tmp_path):
     reloaded = store.get(job.id)
     assert reloaded.progress_pct == 75
     assert reloaded.status == JobStatus.RUNNING
+
+
+def test_create_sweeps_stale_job_dirs(tmp_path):
+    """TTL이 지난 job 디렉토리는 새 job을 만들 때 자동으로 정리돼야 한다 —
+    로그인 없이도 /convert를 무제한 호출할 수 있는데 정리 로직이 없으면
+    PDF+중간산출물+결과물이 디스크에 영구 누적된다."""
+    store = JobStore(str(tmp_path), ttl_hours=1.0)
+    old_job = store.create()
+    old_meta = store._meta_path(old_job.id)
+    old_time = time.time() - 3600 * 2  # 2시간 전(TTL 1시간 초과)
+    os.utime(old_meta, (old_time, old_time))
+
+    new_job = store.create()
+
+    assert not os.path.exists(old_job.workdir)
+    assert os.path.exists(new_job.workdir)
+
+
+def test_create_keeps_fresh_job_dirs(tmp_path):
+    """TTL 안 지난 job은 지우면 안 된다(생성 직후 새 job 생성해도 그대로)."""
+    store = JobStore(str(tmp_path), ttl_hours=24.0)
+    job1 = store.create()
+    job2 = store.create()
+
+    assert os.path.exists(job1.workdir)
+    assert os.path.exists(job2.workdir)

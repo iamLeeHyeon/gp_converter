@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     step_timeout_sec: int = 600
     audiveris_cmd: str = "audiveris"
     jobs_dir: str = "jobs"
+    job_ttl_hours: float = 24.0
 
     # GPC_ 접두사 없이 이미 여러 모듈에서 그대로 쓰이던 환경변수 — alias로 접두사 우회
     frontend_url: str = Field("http://localhost:5173", validation_alias="FRONTEND_URL")

@@ -20,7 +20,7 @@ def get_settings() -> Settings:
 
 
 def get_store(settings: Settings = Depends(get_settings)) -> JobStore:
-    return JobStore(settings.jobs_dir)
+    return JobStore(settings.jobs_dir, ttl_hours=settings.job_ttl_hours)
 
 
 def _access_user(token: str, db: Session) -> Optional[User]:
